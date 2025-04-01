@@ -10,4 +10,4 @@
 
 
 export https_proxy=http://proxy.sdcc.bnl.local:3128/
-python test_all_img_all_week.py --data_dir '/hpcgpfs01/scratch/xyu1/cell_data/cellpaint/rpe_images/week_two/'
+python test_all.py --data_dir '/hpcgpfs01/scratch/xyu1/cell_data/cellpaint/rpe_images/week_two/'
