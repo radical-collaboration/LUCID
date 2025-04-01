@@ -4,7 +4,6 @@
 This repository provides code for cell painting image analysis, we first segment the cell and then compute some measerurement based on the segmentation resutls.
 
 ### Cell boundary or nucli segmentation with CellSAM
-CellSAM is described in more detail in the [preprint](https://www.biorxiv.org/content/10.1101/2023.11.17.567630v3), and is publicly deployed at [cellsam.deepcell.org](https://cellsam.deepcell.org/). CellSAM achieves state-of-the-art performance on segmentation across a variety of cellular targets (bacteria, tissue, yeast, cell culture, etc.) and imaging modalities (brightfield, fluorescence, phase, etc.). Feel free to [reach out](mailto:ulisrael@caltech.edu) for support/questions! The full dataset used to train CellSAM is available [here](https://storage.googleapis.com/cellsam-data/dataset.tar.gz).
 
 ### Getting started
 The easiest way to get started with CellSAM is with pip
