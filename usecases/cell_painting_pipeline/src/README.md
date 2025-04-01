@@ -56,6 +56,6 @@ plt.savefig("r02c05f09p02_mask_boundary_new_4_1.png", dpi=300, bbox_inches='tigh
 plt.show()
 ```
 
-For more details, see `cellsam_introduction.ipynb`.
+For more details, see `test_all.py`.
 
 
