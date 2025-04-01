@@ -1,9 +1,9 @@
 # Cell Painting image Analysis with Different dose rate
 
 ## Description
-This repository provides code for cell painting image analysis, we first segment the cell and then compute some measerurement based on the segmentation resutls.
+This repository provides code for cell painting image segmentation.
 
-### Cell boundary or nucli segmentation with CellSAM
+### Cell boundary or nucleus segmentation with CellSAM
 
 ### Getting started
 The easiest way to get started with CellSAM is with pip
@@ -20,5 +20,4 @@ mask, _, _ = segment_cellular_image(img, device='cuda')
 
 For more details, see `cellsam_introduction.ipynb`.
 
-### Calcualte the measerurement
 
