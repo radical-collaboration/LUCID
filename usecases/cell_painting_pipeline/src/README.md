@@ -3,13 +3,13 @@
 ## Description
 This repository provides code for cell painting image segmentation.
 
-### Cell boundary or nucleus segmentation with CellSAM
-
 ### Getting started
 The easiest way to get started with CellSAM is with pip
 `pip install git+https://github.com/vanvalenlab/cellSAM.git`
 
-CellSAM requires `python>=3.10`, but otherwise uses pure PyTorch. A sample image is included in this repository. Segmentation can be performed as follows
+CellSAM requires `python>=3.10`, but otherwise uses pure PyTorch. A sample image is included in this repository. 
+
+### Cell segmentation
 
 ```
 import numpy as np
@@ -60,6 +60,10 @@ plt.show()
   &nbsp;&nbsp;&nbsp;&nbsp;
   <img alt="Cell boundary Mask" src="./sample_imgs/r02c05f09p02_cell_boundary.png" width="45%">
 </p>
+
+### Cell nuclear segmentation
+
+
 
 For more details, see `test_all.py`.
 
