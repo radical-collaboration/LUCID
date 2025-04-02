@@ -61,7 +61,7 @@ plt.show()
   <img alt="Cell boundary Mask" src="./sample_imgs/r02c05f09p02_cell_boundary.png" width="45%">
 </p>
 
-### Cell nuclear segmentation
+### Cell nucleus segmentation
 
 ```
 import numpy as np
@@ -101,7 +101,7 @@ elapsed_time = end_time - start_time
 plt.figure()
 plt.imshow(mask, cmap='viridis')
 plt.axis('off')
-plt.savefig("r02c05f09p02_nuclear_mask.png", dpi=300, bbox_inches='tight')
+plt.savefig("r02c05f09p02_nucleus_mask.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 # Plot and save the image with bounding boxes only
@@ -119,7 +119,7 @@ for bbox in bounding_boxes:
     ax.add_patch(rect)
 
 plt.axis('off')
-plt.savefig("r02c05f09p02_nuclear_bbx.png", dpi=300, bbox_inches='tight')
+plt.savefig("r02c05f09p02_nucleus_bbx.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 binary_mask = (mask > 0).astype(np.uint8)
@@ -132,7 +132,7 @@ if img.ndim == 3 and img.shape[2] == 3:
 masked_image = img * binary_mask
 
 # Save the masked image
-Image.fromarray(masked_image).save("r03c10f01p01_only_nuclear.png")
+Image.fromarray(masked_image).save("r03c10f01p01_only_nucleus.png")
 
 print(f"Elapsed time for processing: {elapsed_time:.2f} seconds")
 ```
