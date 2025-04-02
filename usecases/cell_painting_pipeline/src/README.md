@@ -136,7 +136,13 @@ Image.fromarray(masked_image).save("r03c10f01p01_only_nucleus.png")
 
 print(f"Elapsed time for processing: {elapsed_time:.2f} seconds")
 ```
+<p align="center">
+  <img alt="Cell Segmentation Mask" src="./sample_imgs/r02c05f09p02_nucleus_bbx.png" width="45%">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img alt="Cell boundary Mask" src="./sample_imgs/r02c05f09p02_nucleus_mask.png" width="45%">
+</p>
 
-For more details, see `test_all.py`.
+
+For more details for batch infernece, see `test_all.py`.
 
 
