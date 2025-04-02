@@ -55,7 +55,9 @@ plt.title("Segmentation Mask with Boundaries")
 plt.savefig("r02c05f09p02_cell_mask_boundary", dpi=300, bbox_inches='tight')
 plt.show()
 ```
+## Resulting Figure
 
+![Cell Segmentation Mask](r02c05f09p02_cell_mask.png)
 For more details, see `test_all.py`.
 
 
