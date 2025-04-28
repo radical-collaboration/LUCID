@@ -16,8 +16,8 @@ os.environ['RADICAL_LOG_LVL'] = 'DEBUG'
 os.environ['RADICAL_REPORT']  = 'TRUE'
 
 WFMS_DIR   = os.path.dirname(os.path.abspath(__file__))
-SRC_DIR    = f'{WFMS_DIR}/../examples'
-IMAGES_DIR = ''
+SRC_DIR    = f'{WFMS_DIR}/../src'
+IMAGES_DIR = f'{WFMS_DIR}/../sample_imgs'  # TODO: to be updated
 
 CONDA_ENV = 've.cellsam'
 
