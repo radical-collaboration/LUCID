@@ -19,6 +19,7 @@ WFMS_DIR   = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR    = f'{WFMS_DIR}/../src'
 IMAGES_DIR = f'{WFMS_DIR}/../sample_imgs'  # TODO: to be updated
 
+# see readme regarding conda env setup
 CONDA_ENV = 've.cellsam'
 
 RESOURCE_DESCRIPTION = {
@@ -28,7 +29,7 @@ RESOURCE_DESCRIPTION = {
     'queue'        : 'debug',
     'nodes'        : 1,
     'runtime'      : 60,  # in minutes (== job-walltime)
-    'input_staging': [f'{SRC_DIR}/*']
+    'input_staging': glob.glob(f'{SRC_DIR}/*')
 }
 
 TASK_PRE_EXEC_ENV = [
@@ -62,7 +63,7 @@ class ExecManager:
         self._session.close(download=True)
 
     def submit_tasks(self, *args, **kwargs):
-        self._tmgr.submit_tasks(*args, **kwargs)
+        return self._tmgr.submit_tasks(*args, **kwargs)
 
     def get_finished_task(self):
         output = None
@@ -132,7 +133,8 @@ class Pipeline:
                     'executable': 'python',
                     'arguments' : [f'$RP_PILOT_SANDBOX/{run_script}',
                                    '--image_path', image_path],
-                    'pre_exec'  : TASK_PRE_EXEC_ENV
+                    'pre_exec'  : TASK_PRE_EXEC_ENV,
+                    'named_env' : 'rp'
                     # TODO: resource requirements? 1 GPU per rank?
                 }))
 
@@ -170,10 +172,12 @@ def main():
     exec_mgr = ExecManager(resource_description=RESOURCE_DESCRIPTION,
                            work_dir=args.work_dir)
 
-    # NOTE: for this test example we create a pipeline per image, while
+    images_dir = args.images_dir or IMAGES_DIR
+
+    # NOTE: for this test example, we create a pipeline per image, while
     #       the other option is to create a pipeline per directory with images.
     pipes = {}
-    for image_path in glob.glob(f'{args.images_dir}/*'):
+    for image_path in glob.glob(f'{images_dir}/*'):
         p = Pipeline(emgr=exec_mgr, image_path=image_path)
         pipes[p.name] = p
 
@@ -199,7 +203,7 @@ def main():
 
         tasks_active[pipe_name] += pipes[pipe_name].submit_next()
 
-        # if there is no active tasks, then all pipelines finished
+        # if there are no active tasks, then all pipelines finished
         if not sum(tasks_active.values()):
             break
 
