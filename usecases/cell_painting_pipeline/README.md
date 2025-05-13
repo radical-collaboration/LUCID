@@ -1,12 +1,22 @@
-# Cell Painting image Analysis with Different dose rate
+# Cell Painting Image Analysis with Different Dose Rate
 
-## 1. Description
-This repository provides code for cell painting image segmentation.
+This repository gives an overview and provides code for cell painting image 
+segmentation.
+
+## 1. Overview
+
+The corresponding pipeline performs cell painting image analysis with two
+primary functions:  
+- Cell segmentation: generates a segmentation mask and overlays cell boundaries
+  on the original image.
+- Cell nucleus segmentation: identifies nuclei via segmentation, extracts 
+  bounding boxes, and creates masked images of nuclei.
 
 ### 1.1. Getting started
+
 The easiest way to get started with CellSAM is with pip
 `pip install git+https://github.com/vanvalenlab/cellSAM.git`
-(see section [2](#2-target-hpc-platforms) for the environment setup per 
+(see section [3](#3-target-hpc-platforms) for the environment setup per 
 a corresponding HPC platform)
 
 CellSAM requires `python>=3.10`, but otherwise uses pure PyTorch. 
@@ -34,9 +44,33 @@ See example python script [`cell_nucleus_segmentation.py`](src/cell_nucleus_segm
 
 For more details for batch inference, see [`test_all.py`](src/test_all.py).
 
-## 2. Target HPC platforms
+## 2. With RADICAL-Pilot
 
-### 2.1. Polaris (ALCF/ANL)
+Prepare conda/virtual environment first and then install and use 
+RADICAL-Pilot in it.
+
+Installation of [RADICAL](https://github.com/radical-cybertools) tool(s)
+```shell
+# activate virtual/conda environment (see section 3)
+pip install radical.pilot
+```
+
+Execute examples above (sections [1.2](#12-cell-segmentation) and 
+[1.3](#13-cell-nucleus-segmentation)) wrapped into RADICAL-Pilot application,
+which manages these examples as computing tasks applied to a particular image.
+Prototype script is located in the [wfms/](wfms) directory.
+
+```shell
+# 1. launch batch or interactive job (see section 3)
+# 2. activate virtual/conda environment
+
+cd LUCID/usecases/cell_painting_pipeline/wfms
+python3 cell.rp.py  # possible options: --work_dir, --images_dir
+```
+
+## 3. Target HPC platforms
+
+### 3.1. Polaris (ALCF/ANL)
 
 Create virtual environment
 ```shell
@@ -48,8 +82,9 @@ conda activate ve.cellsam
 
 Install tools
 ```shell
-pip install git+https://github.com/vanvalenlab/cellSAM.git
 pip install matplotlib
+pip install 'torch==2.6.0' torchvision
+pip install git+https://github.com/vanvalenlab/cellSAM.git
 ```
 
 Get this repository with examples
@@ -57,22 +92,18 @@ Get this repository with examples
 git clone https://github.com/radical-collaboration/LUCID.git
 ```
 
-Run interactive job
+Run an interactive job
 ```shell
 qsub -I -l select=1 -l filesystems=home:eagle -l walltime=00:30:00 \
      -q debug -A <PROJECT_NAME>
 ```
 
 Execute examples above (sections [1.2](#12-cell-segmentation) and 
-[1.3](#13-cell-nucleus-segmentation)) as `cell_segmentation.py` and 
-`cell_nucleus_segmentation.py` respectively.
-```shell
-module use /soft/modulefiles; module load conda
-conda activate ve.cellsam
-python3 cell_segmentation.py
-# OR python3 cell_nucleus_segmentation.py
-```
+[1.3](#13-cell-nucleus-segmentation)) as `python3 cell_segmentation.py` and 
+`python3 cell_nucleus_segmentation.py` respectively, or RADICAL-Pilot 
+application (section [2](#2-with-radical-pilot)) as `python3 cell.rp.py`
 
-## 3. With RADICAL-Pilot
+### 3.2. IC2 (SDCC/BNL)
 
-TBD - prototype script is in the [wfms/](wfms)
+... TBD ...
+
