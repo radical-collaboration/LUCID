@@ -1,0 +1,15 @@
+{
+    "run_description": {
+        "resource"     : "anl.polaris",
+        "project"      : "NNNNN",
+        "queue"        : "debug",
+        "nodes"        : 1,
+        "runtime"      : 60
+    },
+
+    "task_pre_exec": [
+        "module use /soft/modulefiles; module load conda",
+        "eval \"$(conda shell.posix hook)\"",
+        "conda activate ve.cellsam"
+    ]
+}

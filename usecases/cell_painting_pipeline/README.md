@@ -65,7 +65,7 @@ Prototype script is located in the [wfms/](wfms) directory.
 # 2. activate virtual/conda environment
 
 cd LUCID/usecases/cell_painting_pipeline/wfms
-python3 cell.rp.py  # possible options: --work_dir, --images_dir
+python3 cell.rp.py -c <run_config>  # [--work_dir <DIR> --images_dir <DIR>]
 ```
 
 ## 3. Target HPC platforms
@@ -96,14 +96,59 @@ Run an interactive job
 ```shell
 qsub -I -l select=1 -l filesystems=home:eagle -l walltime=00:30:00 \
      -q debug -A <PROJECT_NAME>
+
+module use /soft/modulefiles; module load conda
+conda activate ve.cellsam
 ```
 
 Execute examples above (sections [1.2](#12-cell-segmentation) and 
 [1.3](#13-cell-nucleus-segmentation)) as `python3 cell_segmentation.py` and 
 `python3 cell_nucleus_segmentation.py` respectively, or RADICAL-Pilot 
-application (section [2](#2-with-radical-pilot)) as `python3 cell.rp.py`
+application (section [2](#2-with-radical-pilot)) as 
+`python3 cell.rp.py -c polaris.json`
 
 ### 3.2. IC2 (SDCC/BNL)
 
-... TBD ...
+(*) Institutional Cluster Gen 2, 
+https://www.sdcc.bnl.gov/information/institutional-cluster-gen2
+
+Create virtual environment
+```shell
+export PYTHONNOUSERSITE=True
+module load python/3.12-anaconda-2024.10
+conda create -y -n ve.cellsam python=3.10
+conda activate ve.cellsam
+```
+
+Install tools
+```shell
+pip install matplotlib
+pip install 'torch==2.6.0' torchvision
+pip install git+https://github.com/vanvalenlab/cellSAM.git
+```
+
+Get this repository with examples
+```shell
+git clone https://github.com/radical-collaboration/LUCID.git
+```
+
+Run an interactive job
+```shell
+salloc --nodes=1 --ntasks-per-node=48 --gres=gpu:2 --time=00:30:00 \
+       --partition=debug --account=csihpc  
+
+# OR use another project/account: --account=csiml
+
+export https_proxy=http://proxy.sdcc.bnl.local:3128/
+module load python/3.12-anaconda-2024.10
+conda activate ve.cellsam
+```
+OR update the launch script [bnl_ic2_submit.sh](launch/bnl_ic2_submit.sh) to 
+run examples from sections 1 and 2.
+
+Execute examples above (sections [1.2](#12-cell-segmentation) and 
+[1.3](#13-cell-nucleus-segmentation)) as `python3 cell_segmentation.py` and 
+`python3 cell_nucleus_segmentation.py` respectively, or RADICAL-Pilot 
+application (section [2](#2-with-radical-pilot)) as 
+`python3 cell.rp.py -c ic2.json`
 

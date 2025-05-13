@@ -11,37 +11,30 @@ from collections import defaultdict
 import radical.pilot as rp
 import radical.utils as ru
 
-# for debug purposes
-os.environ['RADICAL_LOG_LVL'] = 'DEBUG'
-os.environ['RADICAL_REPORT']  = 'TRUE'
-
 WFMS_DIR   = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR    = f'{WFMS_DIR}/../src'
 IMAGES_DIR = f'{WFMS_DIR}/../sample_imgs'  # TODO: to be updated
 
-# see readme regarding conda env setup
-CONDA_ENV = 've.cellsam'
+os.environ['RADICAL_CONFIG_USER_DIR'] = WFMS_DIR
+# for debug purposes
+os.environ['RADICAL_LOG_LVL'] = 'DEBUG'
+os.environ['RADICAL_REPORT']  = 'TRUE'
 
-RESOURCE_DESCRIPTION = {
-    'resource'     : 'anl.polaris',
-    'project'      : 'NNNNN',
-    # https://docs.alcf.anl.gov/polaris/running-jobs/#queues
-    'queue'        : 'debug',
-    'nodes'        : 1,
-    'runtime'      : 60,  # in minutes (== job-walltime)
-    'input_staging': glob.glob(f'{SRC_DIR}/*')
-}
-
-TASK_PRE_EXEC_ENV = [
-    'module use /soft/modulefiles; module load conda',
-    'eval "$(conda shell.posix hook)"',
-    f'conda activate {CONDA_ENV}'
-]
+# in case of automation to prepare resource configuration
+#   os.system(f'mkdir -p {WFMS_DIR}/.radical/pilot/configs && '
+#             f'cd {WFMS_DIR} && cp resource_bnl.json .radical/pilot/configs/')
 
 
 class ExecManager:
 
-    def __init__(self, resource_description, work_dir=None):
+    def __init__(self, config_file, work_dir=None):
+
+        if '/' not in config_file:
+            config_file = os.path.join(WFMS_DIR, config_file)
+        self.cfg = ru.TypedDict(ru.read_json(config_file))
+        if not self.cfg:
+            raise FileNotFoundError(f'Config file not found: {config_file}')
+
         self.tasks_finished_queue = queue.Queue()
 
         # RADICAL-Pilot management components
@@ -51,8 +44,11 @@ class ExecManager:
 
         self._tmgr.register_callback(self.task_state_cb)
 
-        # contains "radical.pilot.sandbox" with agent sandboxes per session
-        resource_description['sandbox'] = os.path.abspath(work_dir or WFMS_DIR)
+        resource_description = ru.as_dict(self.cfg.run_description)
+        resource_description.update(
+            input_staging=glob.glob(f'{SRC_DIR}/*'),
+            # contains "radical.pilot.sandbox" with agent sandboxes per session
+            sandbox=os.path.abspath(work_dir or WFMS_DIR))
         self._pilot = self._pmgr.submit_pilots(
             rp.PilotDescription(resource_description))
 
@@ -133,7 +129,7 @@ class Pipeline:
                     'executable': 'python',
                     'arguments' : [f'$RP_PILOT_SANDBOX/{run_script}',
                                    '--image_path', image_path],
-                    'pre_exec'  : TASK_PRE_EXEC_ENV,
+                    'pre_exec'  : self.emgr.cfg.task_pre_exec or [],
                     'named_env' : 'rp'
                     # TODO: resource requirements? 1 GPU per rank?
                 }))
@@ -162,6 +158,12 @@ def get_args():
         type=str,
         required=False,
         help='directory path of input images')
+    parser.add_argument(
+        '-c', '--config_file',
+        dest='config_file',
+        type=str,
+        required=True,
+        help='configuration file with the run description')
     return parser.parse_args(sys.argv[1:])
 
 
@@ -169,7 +171,7 @@ def get_args():
 def main():
 
     args = get_args()
-    exec_mgr = ExecManager(resource_description=RESOURCE_DESCRIPTION,
+    exec_mgr = ExecManager(config_file=args.config_file,
                            work_dir=args.work_dir)
 
     images_dir = args.images_dir or IMAGES_DIR
