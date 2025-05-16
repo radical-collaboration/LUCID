@@ -8,6 +8,8 @@ Shared space for the variety of LUCID use cases data, including source code,
 datasets, instructions for different tools setup and execution, and 
 documentation.
 
+The file under `usecases/cell_painting_pipeline/src/cell_paint_feat.ipynb` defines a dataset class and data processing pipeline for working with Cell Painting assay data.
+
 
 [^1]: Andre Merzky, Mikhail Titov, Matteo Turilli, Ozgur Kilic, Tianle Wang, 
 and Shantenu Jha. (2025). Scalable Runtime Architecture for Data-driven, 
