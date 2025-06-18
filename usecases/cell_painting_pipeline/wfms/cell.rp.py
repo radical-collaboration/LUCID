@@ -119,19 +119,23 @@ class Pipeline:
 
     def stage_1(self):
         """Segmentation."""
+
+        segmentation_scripts = ['cell_nucleus_segmentation.py',
+                                'cell_segmentation.py']
+
         tds = []
-        for run_script in ['cell_nucleus_segmentation.py',
-                           'cell_segmentation.py']:
+        for run_script in segmentation_scripts:
             for image_path in self.images:
                 tds.append(rp.TaskDescription({
-                    'uid'       : self.emgr.generate_task_uid(prefix=self.name,
-                                                              stage_id=1),
-                    'executable': 'python',
-                    'arguments' : [f'$RP_PILOT_SANDBOX/{run_script}',
-                                   '--image_path', image_path],
-                    'pre_exec'  : self.emgr.cfg.task_pre_exec or [],
-                    'named_env' : 'rp'
-                    # TODO: resource requirements? 1 GPU per rank?
+                    'uid'           : self.emgr.generate_task_uid(
+                                          prefix=self.name, stage_id=1),
+                    'executable'    : 'python',
+                    'arguments'     : [f'$RP_PILOT_SANDBOX/{run_script}',
+                                       '--image_path', image_path],
+                    'pre_exec'      : self.emgr.cfg.task_pre_exec or [],
+                    'named_env'     : 'rp',
+                    'ranks'         : 1,
+                    'gpus_per_rank' : 1
                 }))
 
         return len(self.emgr.submit_tasks(tds))
