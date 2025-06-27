@@ -7,9 +7,16 @@
         "runtime"      : 60
     },
 
-    "task_pre_exec": [
-        "module use /soft/modulefiles; module load conda",
-        "eval \"$(conda shell.posix hook)\"",
-        "conda activate ve.cellsam"
-    ]
+    "pipeline_cfg": {
+        "images_dir"   : "",
+        "output_dir"   : ""
+    },
+
+    "exec_cfg": {
+        "task_pre_exec": [
+            "module use /soft/modulefiles; module load conda",
+            "eval \"$(conda shell.posix hook)\"",
+            "conda activate ve.cellsam"
+        ]
+    }
 }

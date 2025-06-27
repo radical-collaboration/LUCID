@@ -6,11 +6,18 @@
         "runtime"      : 60
     },
 
-    "task_pre_exec": [
-        "conda deactivate || true",
-        "module purge",
-        "module load python/3.12-anaconda-2024.10",
-        "eval \"$(conda shell.posix hook)\"",
-        "conda activate ve.cellsam"
-    ]
+    "pipeline_cfg": {
+        "images_dir"   : "/hpcgpfs01/scratch/mtitov/cell_painting_images/Images",
+        "output_dir"   : "/hpcgpfs01/scratch/mtitov/cell_painting_images/output"
+    },
+
+    "exec_cfg": {
+        "task_pre_exec": [
+            "conda deactivate || true",
+            "module purge",
+            "module load python/3.12-anaconda-2024.10",
+            "eval \"$(conda shell.posix hook)\"",
+            "conda activate ve.cellsam"
+        ]
+    }
 }
