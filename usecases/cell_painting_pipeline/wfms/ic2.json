@@ -1,6 +1,6 @@
 {
     "run_description": {
-        "resource"     : "bnl.ic2_debug",
+        "resource"     : "bnl.ic2_csi",
         "project"      : "csihpc",
         "nodes"        : 1,
         "runtime"      : 60

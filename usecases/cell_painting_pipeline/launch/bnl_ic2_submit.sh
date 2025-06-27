@@ -6,7 +6,7 @@
 #SBATCH --time=24:00:00         ## Job Duration
 #SBATCH --ntasks=6              ## Number of tasks (analyses) to run
 #SBATCH --cpus-per-task=8       ## The number of threads the code will use
-#SBATCH --gres=gpu:2            ## Real memory(MB) per CPU required by the job.
+#SBATCH --gres=gpu:4
 #SBATCH -A csiml  
 
 
