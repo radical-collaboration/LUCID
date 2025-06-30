@@ -201,6 +201,12 @@ def get_args():
         type=str,
         required=True,
         help='configuration file with the run description')
+    parser.add_argument(
+        '-t', '--runtime',
+        dest='runtime',
+        type=int,
+        help='requested runtime (min) for application to run',
+        required=False)
     return parser.parse_args(sys.argv[1:])
 
 
@@ -215,6 +221,10 @@ def main():
     config = ru.TypedDict(ru.read_json(config_file))
     if not len(config):
         raise ValueError(f'Config is empty (file: {config_file})')
+
+    # adjust runtime
+    if args.runtime:
+        config.run_description.runtime = int(args.runtime)
 
     exec_mgr = ExecManager(config=config, work_dir=args.work_dir)
 

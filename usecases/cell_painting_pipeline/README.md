@@ -150,5 +150,5 @@ Execute examples above (sections [1.2](#12-cell-segmentation) and
 [1.3](#13-cell-nucleus-segmentation)) as `python3 cell_segmentation.py` and 
 `python3 cell_nucleus_segmentation.py` respectively, or RADICAL-Pilot 
 application (section [2](#2-with-radical-pilot)) as 
-`python3 cell.rp.py -c ic2.json`
+`python3 cell.rp.py -t 30 -c ic2.json`
 

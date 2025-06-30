@@ -12,6 +12,8 @@
 
 export https_proxy=http://proxy.sdcc.bnl.local:3128/
 # NOTE: activate virtual/conda environment first
-python3 cell.rp.py -c ic2.json
+
+CP_RUN_TIME=$(squeue -j "$SLURM_JOB_ID" -h -O TimeLimit | awk -F: '{ print ($1 * 3600) + ($2 * 60) + $3 }')
+python3 cell.rp.py -t $CP_RUN_TIME -c ic2.json
 # python test_all.py \
 #  --data_dir '/hpcgpfs01/scratch/xyu1/cell_data/cellpaint/rpe_images/week_two/'
