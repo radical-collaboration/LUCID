@@ -51,14 +51,12 @@ class LUCID_SIG(object):
                           self.TASK_MUTATION_ANNOT: 'M'}  # Glyph for mutation annotation tasks
 
         # bookkeeping
-        self._seq_info_annot = 0  # Counter for sequence information annotation tasks
         self._sig_prof_extract = 0  # Counter for signature profile extraction tasks
         self._annotation_prep = 0  # Counter for annotation preparation tasks
         self._genome_download = 0  # Counter for genome download tasks
         self._mutation_prep = 0  # Counter for mutation preparation tasks
         self._mutation_annot = 0  # Counter for mutation annotation tasks
         
-        self._seq_info_annot_max = self.args.num_annot  # Max number of sequence information annotation tasks
         self._sig_prof_extract_max = self.args.num_extact  # Max number of signature profile extraction tasks
         self._annotation_prep_max = self.args.num_annot_prep  # Max number of annotation preparation tasks
         self._genome_download_max = self.args.num_genome  # Max number of genome download tasks
@@ -70,6 +68,12 @@ class LUCID_SIG(object):
 
         self._gpus           = self.args.num_gpus * self.args.num_nodes  #available Gpu resources
         self._gpus_used      = 0
+
+        self._mutation_prep_started = False  # Flag to indicate if mutation preparation has started
+        self._genome_download_started = False
+        self._annot_prep_started = False
+        self._sig_extract_started = False
+        self._mutation_annot_started = False
 
         self._lock           = mt.RLock()
         self._tasks          = {ttype: dict() for ttype in self.TASK_TYPES}
@@ -104,35 +108,36 @@ class LUCID_SIG(object):
         parser = argparse.ArgumentParser(description="LUCID Signature Detection Pilot Script")
 
         # Add arguments for the script
-        parser.add_argument('--resource', default='polaris',
-                        help='the resource to use (e.g., polaris, theta, etc.)')
-        parser.add_argument('--runtime', default='00:30:00',
-                        help='the runtime for the pilot (e.g., 00:30:00)')
-        parser.add_argument('--num_cpus', type=int, default=16,
-                        help='number of CPU cores per node (default: 16)')
+        parser.add_argument('--resource', default='anl.polaris',
+                        help='the resource to use (e.g., anl.polaris, ornl.frontier, etc.)')
+        parser.add_argument('--runtime', type=int, default=60,
+                        help='the runtime for the pilot (e.g., 60)')
+        parser.add_argument('--num_cpus', type=int, default=32,
+                        help='number of CPU cores per node (default: 32)')
         parser.add_argument('--num_gpus', type=int, default=0,
                         help='number of GPUs per node (default: 0). Note: Ensure the resource supports GPU')
         parser.add_argument('--num_nodes', type=int, default=1,
                         help='number of nodes to use for the job (default: 1). This should be set according to your resource limits')
-        parser.add_argument('--num_annot', type=int, default=3,
-                        help='number of sequence information annotation tasks to run (default: 3). This controls how many tasks will be submitted for sequence information annotation')
-        parser.add_argument('--num_extact', type=int, default=3,
-                        help='number of signature profile extraction tasks to run (default: 3). This controls how many tasks will be submitted for signature profile extraction. Adjust this based on your workload and resource availability')
+        parser.add_argument('--num_annot', type=int, default=1,
+                        help='number of sequence information annotation tasks to run (default: 1). This controls how many tasks will be submitted for sequence information annotation')
+        parser.add_argument('--num_extact', type=int, default=1,
+                        help='number of signature profile extraction tasks to run (default: 1). This controls how many tasks will be submitted for signature profile extraction. Adjust this based on your workload and resource availability')
         parser.add_argument('--num_annot_prep', type=int, default=1,
                         help='number of annotation preparation tasks to run (default: 1)')
         parser.add_argument('--num_genome', type=int, default=1,
                         help='number of genome download tasks to run (default: 1)')
-        parser.add_argument('--num_mut_prep', type=int, default=2,
-                        help='number of mutation preparation tasks to run (default: 2)')
-        parser.add_argument('--num_mut_annot', type=int, default=2,
-                        help='number of mutation annotation tasks to run (default: 2)')
-        parser.add_argument('--project_id', default='CSC249ADCD08',
-                        help='Project ID for the resource allocation (default: CSC249ADCD08). This should be set to your actual project ID for resource allocation purposes')
+        parser.add_argument('--num_mut_prep', type=int, default=1,
+                        help='number of mutation preparation tasks to run (default: 1)')
+        parser.add_argument('--num_mut_annot', type=int, default=1,
+                        help='number of mutation annotation tasks to run (default: 1)')
+        parser.add_argument('--project_id', default='hep-cce',
+                        help='Project ID for the resource allocation (default: hep-cce). This should be set to your actual project ID for resource allocation purposes')
         parser.add_argument('--queue', default='debug',
                         help='queue to use for the pilot (default: debug). This should be set according to the queue policies of your resource. For example, Polaris uses "batch"')
         parser.add_argument('--work_dir', type=str, default=os.getcwd(),
                         help='working directory for the job (default: current working directory). This should be set to the directory where your scripts and input files are located')
-    
+        parser.add_argument('--genome_offline_path', type=str, default='{}/reference_genomes'.format(os.getcwd()),
+                        help='Path to offline genome file for SigProfilerExtractor (default: empty, not used)')
 
         args = parser.parse_args()
         self.args = args
@@ -170,10 +175,6 @@ class LUCID_SIG(object):
         n     = len(self._tasks[self.TASK_SIG_PROF_EXTRACT])  # Number of signature profile extraction tasks
         idle -= n
         self._rep.ok('%s' % self._glyphs[self.TASK_SIG_PROF_EXTRACT] * n)
-
-        n     = len(self._tasks[self.TASK_SEQ_INFO_ANNOT])  # Number of sequence information annotation tasks
-        idle -= n
-        self._rep.ok('%s' % self._glyphs[self.TASK_SEQ_INFO_ANNOT] * n)
         
         n     = len(self._tasks[self.TASK_ANNOTATION_PREP])  # Number of annotation preparation tasks
         idle -= n
@@ -212,7 +213,6 @@ class LUCID_SIG(object):
         self.dump('Submit initial tasks')  
 
         # reset bookkeeping
-        self._seq_info_annot = 0  # Counter for sequence information annotation tasks
         self._sig_prof_extract = 0  # Counter for signature profile extraction tasks
         self._annotation_prep = 0  # Counter for annotation preparation tasks
         self._genome_download = 0  # Counter for genome download tasks
@@ -229,24 +229,22 @@ class LUCID_SIG(object):
         # when they are done run mutation prep and annotation prep
         # when they are done run mutation annotation
 
-        # Start genome download first
+        # Start genome download first  Step 0
         self.run_genome_download(self.TASK_GENOME_DOWNLOAD, n=self.args.num_genome)
-        # TODO download the VCF file
+        # # TODO download the VCF file
         
-        # # Then run annotation preparation
-        # self.run_annotation_prep(self.TASK_ANNOTATION_PREP, n=self.args.num_annot_prep)
+        #Following is just to show what are the next steps:
+        # # Then run annotation preparation Step 1
+        #ex: self.run_annotation_prep(self.TASK_ANNOTATION_PREP, n=self.args.num_annot_prep)
         
-        # # Run sequence information annotation
-        # self.run_annotation(self.TASK_SEQ_INFO_ANNOT, n=self.args.num_annot)
+        # # Run signature profile extraction  Step 1
+        #ex: self.run_extraction(self.TASK_SIG_PROF_EXTRACT, n=self.args.num_extact)
         
-        # # Run signature profile extraction
-        # self.run_extraction(self.TASK_SIG_PROF_EXTRACT, n=self.args.num_extact)
+        # # Run mutation preparation Step 2
+        #ex: self.run_mutation_prep(self.TASK_MUTATION_PREP, n=self.args.num_mut_prep)
         
-        # # Run mutation preparation
-        # self.run_mutation_prep(self.TASK_MUTATION_PREP, n=self.args.num_mut_prep)
-        
-        # # Run mutation annotation
-        # self.run_mutation_annot(self.TASK_MUTATION_ANNOT, n=self.args.num_mut_annot)
+        # # Run mutation annotation Step 3
+        #ex: self.run_mutation_annot(self.TASK_MUTATION_ANNOT, n=self.args.num_mut_annot)
 
 
     # --------------------------------------------------------------------------
@@ -292,10 +290,11 @@ class LUCID_SIG(object):
 
 
         with self._lock:
-
+            
             tasks = self._tmgr.submit_tasks(tds)
 
             for task in tasks:
+                print("TASK has been submitted is \n" , task)
                 self._register_task(task)
 
 
@@ -338,10 +337,16 @@ class LUCID_SIG(object):
             self._gpus_used += gpus  # Update the GPU usage
 
             # Update counters for task types
-            if ttype == self.TASK_SEQ_INFO_ANNOT:
-                self._seq_info_annot += 1
-            elif ttype == self.TASK_SIG_PROF_EXTRACT:
+            if ttype == self.TASK_SIG_PROF_EXTRACT:
                 self._sig_prof_extract += 1
+            elif ttype == self.TASK_ANNOTATION_PREP:
+                self._annotation_prep += 1
+            elif ttype == self.TASK_GENOME_DOWNLOAD:
+                self._genome_download += 1
+            elif ttype == self.TASK_MUTATION_PREP:
+                self._mutation_prep += 1
+            elif ttype == self.TASK_MUTATION_ANNOT:
+                self._mutation_annot += 1
 
 
     # --------------------------------------------------------------------------
@@ -428,28 +433,16 @@ class LUCID_SIG(object):
 
     # --------------------------------------------------------------------------
     #
-    def _control_seq_info_annot(self, task):
-        '''
-        react on completed sequence information annotation task
-        '''
-        self._seq_info_annot -= 1  # Decrement the counter for sequence information annotation tasks
-        
-        if self._seq_info_annot == 0:
-            self.dump(task, 'completed, ALL Sequence Information Annotation')
-        else:
-            self.dump(task, 'completed, Sequence Information Annotation low')  # Log the status of sequence information annotation tasks
-
-
-    # --------------------------------------------------------------------------
-    #
     def _control_sig_prof_extract(self, task):
         '''
         react on completed signature profile extraction task
         '''
         self._sig_prof_extract -= 1  # Decrement the counter for signature profile extraction tasks
         
-        if self._sig_prof_extract == 0:
-            self.dump(task, 'completed, ALL Signature Profile Extraction')
+        if self._sig_prof_extract == 0 and self._annotation_prep == 0 and not self._mutation_prep_started:
+            self._mutation_prep_started = True  # Set the flag to indicate mutation preparation has started
+            self.run_mutation_prep(self.TASK_MUTATION_PREP, n=self.args.num_mut_prep)
+            self.dump(task, 'completed, ALL Signature Profile Extraction and ALL Annotation Preparation')
         else:
             self.dump(task, 'completed, Signature Profile Extraction low')  # Log the status of signature profile extraction tasks
 
@@ -462,8 +455,9 @@ class LUCID_SIG(object):
         '''
         self._annotation_prep -= 1  # Decrement the counter for annotation preparation tasks
         
-        if self._annotation_prep == 0:
-            self.dump(task, 'completed, ALL Annotation Preparation')
+        if self._annotation_prep == 0 and self._sig_prof_extract == 0 and not self._mutation_prep_started:
+            self.run_mutation_prep(self.TASK_MUTATION_PREP, n=self.args.num_mut_prep)
+            self.dump(task, 'completed, ALL Annotation Preparation and ALL Signature Profile Extraction')
         else:
             self.dump(task, 'completed, Annotation Preparation low')
 
@@ -476,8 +470,9 @@ class LUCID_SIG(object):
         self._genome_download -= 1  # Decrement the counter for genome download tasks
         
         if self._genome_download == 0:
-            self.dump(task, 'completed, ALL Genome Downloaded Starting the Sig Profiler Extractor')
+            self.run_annotation_prep(self.TASK_ANNOTATION_PREP, n=self.args.num_annot_prep)
             self.run_extraction(self.TASK_SIG_PROF_EXTRACT, n=self.args.num_extact)
+            self.dump(task, 'completed, ALL Genome Download')
         else:
             self.dump(task, 'completed, Genome Download low')
 
@@ -490,6 +485,7 @@ class LUCID_SIG(object):
         self._mutation_prep -= 1  # Decrement the counter for mutation preparation tasks
         
         if self._mutation_prep == 0:
+            self.run_mutation_annot(self.TASK_MUTATION_ANNOT, n=self.args.num_mut_annot)
             self.dump(task, 'completed, ALL Mutation Preparation')
         else:
             self.dump(task, 'completed, Mutation Preparation low')
@@ -503,37 +499,21 @@ class LUCID_SIG(object):
         self._mutation_annot -= 1  # Decrement the counter for mutation annotation tasks
         
         if self._mutation_annot == 0:
+            time.sleep(120)  # Wait for 120 seconds before closing the session
+            self.close()  # Close the session when all mutation annotation tasks are done
             self.dump(task, 'completed, ALL Mutation Annotation')
         else:
             self.dump(task, 'completed, Mutation Annotation low')
 
 
-    # This is for agent, return a stage which has a single training task
-    def run_annotation(self, ttype, n=1):
-        with self._lock:
-            tds   = list()
-            for _ in range(n):
-                tds.append(rp.TaskDescription({
-                         'pre_exec'     : ["module load conda","conda activate /xxx/venv/rct","!pip install pyranges"],
-                         'uid'          : ru.generate_id(ttype),
-                         'cpu_processes': self.args.num_cpus,  # Number of CPU processes to use for the task
-                         'cpu_process_type' : None,
-                         'cpu_threads'      : 1,  # Number of CPU threads to use for the task
-                         'cpu_thread_type'  : rp.OpenMP,
-                         'gpu_processes'     : 0,
-                         'gpu_process_type'  : None,
-                         'executable'   : 'python',
-                         'arguments'    : [ '{}/seqinfor_files_to_annotation.py'.format(self.args.work_dir)]}))
-
-            self._submit_task(tds)
-
 
     def run_extraction(self, ttype, n=1):
+        self._sig_extract_started = True  # Set the flag to indicate signature profile extraction has started
         with self._lock:
             tds   = list()
             for _ in range(n):
                 tds.append(rp.TaskDescription({
-                         'pre_exec'     : ["module load conda","conda activate /xxx/venv/rct","!pip install SigProfilerExtractor numpy==1.26.4"],
+                         'pre_exec'     : ["module load python", "source /eagle/LUCID/okilic/SigDetect/source.me"],
                          'uid'          : ru.generate_id(ttype),
                          'cpu_processes': self.args.num_cpus,  # Number of CPU processes to use for the task
                          'cpu_process_type' : None,
@@ -542,10 +522,12 @@ class LUCID_SIG(object):
                          'gpu_processes'     : 0,
                          'gpu_process_type'  : None,
                          'executable'   : 'python',
-                         'arguments'    : [ '{}/SigProfileExtractor.py'.format(self.args.work_dir),
-                                             '--input ./radiation_analysis_results/filtered_vcfs/',
-                                             '--output ./radiation_analysis_results/filtered_vcfs/output/',
-                                             '--project test'  # Project name for SigProfilerExtractor, can be customized
+                         'arguments'    : [ '{}/sigprofiler.py'.format(self.args.work_dir),
+                                             '--input', './radiation_analysis_results/filtered_vcfs/',
+                                             '--output', './radiation_analysis_results/filtered_vcfs/output/',
+                                             '--project', 'test',  # Project name for SigProfilerExtractor, can be customized,
+                                             '--reference', 'GRCh38'
+                                             '--offline_path', '{}'.format(self.args.genome_offline_path)
                                             ]}))
 
             self._submit_task(tds)
@@ -554,11 +536,21 @@ class LUCID_SIG(object):
         '''
         Run annotation preparation tasks 
         '''
+
+        # ''' First check if annotation preparation has already run, if so, do not run again'''
+        # if '{}/annotations'.format(self.args.work_dir) in os.listdir(self.args.work_dir):
+        #     self._rep.info('Annotation preparation already completed, skipping...')
+        #     lucid_sig._annot_prep_started = 1 
+        #     lucid_sig._annotation_prep = 1
+        #     return
+
+        
+        self._annot_prep_started = True  # Set the flag to indicate annotation preparation has started
         with self._lock:
             tds = list()
             for _ in range(n):
                 tds.append(rp.TaskDescription({
-                         'pre_exec'     : ["module load conda", "conda activate /xxx/venv/rct"],
+                         'pre_exec'     : ["module load python", "source /eagle/LUCID/okilic/SigDetect/source.me"],
                          'uid'          : ru.generate_id(ttype),
                          'cpu_processes': self.args.num_cpus,
                          'cpu_process_type' : None,
@@ -566,10 +558,12 @@ class LUCID_SIG(object):
                          'cpu_thread_type'  : rp.OpenMP,
                          'gpu_processes'     : 0,
                          'gpu_process_type'  : None,
-                         'executable'   : 'python',
-                         'arguments'    : ['{}/annotation_preprocessing.py'.format(self.args.work_dir),
-                                          '--build', 'hg38',
-                                          '--annotation-dir', '{}/annotations'.format(self.args.work_dir)]}))
+                        #  'executable'   : 'python',
+                         'executable'   : 'sleep',
+                         'arguments'    : ['10']}))
+                        #  'arguments'    : ['{}/annotation_preprocessing.py'.format(self.args.work_dir),
+                        #                   '--build', 'hg38',
+                        #                   '--annotation-dir', '{}/annotations'.format(self.args.work_dir)]}))
 
             self._submit_task(tds)
 
@@ -577,12 +571,12 @@ class LUCID_SIG(object):
         '''
         Run genome download tasks
         '''
+        self._genome_download_started = True  # Set the flag to indicate genome download has started
         with self._lock:
             tds = list()
             for _ in range(n):
                 tds.append(rp.TaskDescription({
-                         'pre_exec'     : ["module load conda", "conda activate /xxx/venv/rct", 
-                                         "!pip install SigProfilerExtractor numpy==1.26.4"],
+                         'pre_exec'     : ["module load python", "source /eagle/LUCID/okilic/SigDetect/source.me"],
                          'uid'          : ru.generate_id(ttype),
                          'cpu_processes': self.args.num_cpus,
                          'cpu_process_type' : None,
@@ -590,36 +584,27 @@ class LUCID_SIG(object):
                          'cpu_thread_type'  : rp.OpenMP,
                          'gpu_processes'     : 0,
                          'gpu_process_type'  : None,
-                         'executable'   : 'python',
-                         'arguments'    : ['{}/genome_download.py'.format(self.args.work_dir)]}))
+                        #  'executable'   : 'python',
+                         'executable'   : 'sleep',
+                        #  'arguments'    : ['{}/genome_download.py'.format(self.args.work_dir)]}))
+                         'arguments'    : ['10']}))
 
             self._submit_task(tds)
 
-    def run_mutation_prep(self, ttype, n=1):
+    def run_mutation_prep(self, ttype, n=24):  # Set default n to 24 for 24 chromosomes
         '''
-        Run mutation preparation tasks
+        Run mutation preparation tasks, one task per chromosome
         '''
+        self._mutation_prep_started = True  # Set the flag to indicate mutation preparation has started
         with self._lock:
             tds = list()
-            # Run for multiple chromosomes (1-22, X, Y)
+            # Run for each chromosome (1-22, X, Y) individually
             chromosomes = [str(i) for i in range(1, 23)] + ['X', 'Y']
-            # Distribute chromosomes among tasks
-            chrom_per_task = max(1, len(chromosomes) // n)
             
-            for i in range(n):
-                start_idx = i * chrom_per_task
-                end_idx = min((i + 1) * chrom_per_task, len(chromosomes))
-                
-                # For the last task, include any remaining chromosomes
-                if i == n - 1:
-                    end_idx = len(chromosomes)
-                    
-                # Get chromosomes for this task
-                task_chroms = chromosomes[start_idx:end_idx]
-                
-                # Create task for these chromosomes
+            # Create one task per chromosome
+            for chrom in chromosomes:
                 tds.append(rp.TaskDescription({
-                         'pre_exec'     : ["module load conda", "conda activate /xxx/venv/rct"],
+                         'pre_exec'     : ["module load python", "source /eagle/LUCID/okilic/SigDetect/source.me"],
                          'uid'          : ru.generate_id(ttype),
                          'cpu_processes': self.args.num_cpus,
                          'cpu_process_type' : None,
@@ -629,37 +614,27 @@ class LUCID_SIG(object):
                          'gpu_process_type'  : None,
                          'executable'   : 'python',
                          'arguments'    : ['{}/mutation_preprocessing.py'.format(self.args.work_dir),
-                                          '--chromosome', ','.join(task_chroms),
+                                          '--chromosome', chrom,  # Just one chromosome per task
                                           '--output', '{}/processed_data'.format(self.args.work_dir),
                                           '--summary', '{}/summary_data'.format(self.args.work_dir)]}))
 
-            self._submit_task(tds)
+            # Only submit as many tasks as requested by the parameter (but default is now 24)
+            self._submit_task(tds[:n])
 
-    def run_mutation_annot(self, ttype, n=1):
+    def run_mutation_annot(self, ttype, n=24):  # Set default n to 24 for 24 chromosomes
         '''
-        Run mutation annotation tasks
+        Run mutation annotation tasks, one task per chromosome
         '''
+        self._mutation_annot_started = True  # Set the flag to indicate mutation annotation has started
         with self._lock:
             tds = list()
-            # Run for multiple chromosomes (1-22, X, Y)
+            # Run for each chromosome (1-22, X, Y) individually
             chromosomes = [str(i) for i in range(1, 23)] + ['X', 'Y']
-            # Distribute chromosomes among tasks
-            chrom_per_task = max(1, len(chromosomes) // n)
             
-            for i in range(n):
-                start_idx = i * chrom_per_task
-                end_idx = min((i + 1) * chrom_per_task, len(chromosomes))
-                
-                # For the last task, include any remaining chromosomes
-                if i == n - 1:
-                    end_idx = len(chromosomes)
-                    
-                # Get chromosomes for this task
-                task_chroms = chromosomes[start_idx:end_idx]
-                
-                # Create task for these chromosomes
+            # Create one task per chromosome
+            for chrom in chromosomes:
                 tds.append(rp.TaskDescription({
-                         'pre_exec'     : ["module load conda", "conda activate /xxx/venv/rct", "!pip install pyranges"],
+                         'pre_exec'     : ["module load python", "source /eagle/LUCID/okilic/SigDetect/source.me"],
                          'uid'          : ru.generate_id(ttype),
                          'cpu_processes': self.args.num_cpus,
                          'cpu_process_type' : None,
@@ -669,13 +644,14 @@ class LUCID_SIG(object):
                          'gpu_process_type'  : None,
                          'executable'   : 'python',
                          'arguments'    : ['{}/mutation_annotation.py'.format(self.args.work_dir),
-                                          '--chromosome', task_chroms[0],  # For simplicity, handle one chromosome per task
+                                          '--chromosome', chrom,  # Just one chromosome per task
                                           '--input-dir', '{}/processed_data'.format(self.args.work_dir),
                                           '--output-dir', '{}/annotated_data'.format(self.args.work_dir),
                                           '--annotation-dir', '{}/annotations'.format(self.args.work_dir),
                                           '--build', 'hg38']}))
 
-            self._submit_task(tds)
+            # Only submit as many tasks as requested by the parameter (but default is now 24)
+            self._submit_task(tds[:n])
 
 
 # ------------------------------------------------------------------------------
@@ -687,9 +663,22 @@ if __name__ == '__main__':
     try:
         lucid_sig.start()
 
-        while True:
-          # ddmd.dump()
+        while True:  
+            # Only consider workflow complete if each stage started AND finished
+            genome_done = lucid_sig._genome_download_started and lucid_sig._genome_download == 0
+            annot_done = lucid_sig._annot_prep_started and lucid_sig._annotation_prep == 0
+            extract_done = lucid_sig._sig_extract_started and lucid_sig._sig_prof_extract == 0
+            mut_prep_done = lucid_sig._mutation_prep_started and lucid_sig._mutation_prep == 0
+            mut_annot_done = lucid_sig._mutation_annot_started and lucid_sig._mutation_annot == 0
+            
+            # Check if we've reached the end of the workflow
+            if genome_done and annot_done and extract_done and mut_prep_done and mut_annot_done:
+                lucid_sig.dump("All workflows completed. Exiting...")
+                break
+                
             time.sleep(1)
+        #   # ddmd.dump()
+        #     time.sleep(1)
 
     finally:
         lucid_sig.close()
