@@ -27,7 +27,7 @@ os.environ['RADICAL_REPORT'] = 'TRUE'
 #             f'cd {WFMS_DIR} && cp resource_bnl.json .radical/pilot/configs/')
 
 
-def filter_images(images_dir: str) -> list:
+def filter_input_images(images_dir: str) -> list:
     output = []
     for image_path in glob.glob(f'{images_dir}/*'):
         f = os.path.basename(image_path).lower()
@@ -112,7 +112,7 @@ class Pipeline:
         if image_path:
             self.images.append(image_path)
         if images_dir and os.path.isdir(images_dir):
-            self.images.extend(filter_images(images_dir))
+            self.images.extend(filter_input_images(images_dir))
 
         self.output_dir = output_dir or os.path.dirname(self.images[0])
         os.makedirs(self.output_dir, exist_ok=True)
@@ -170,6 +170,26 @@ class Pipeline:
     def stage_2(self):
         """Analysis."""
         return 0
+
+    # FIXME: for test purposes keep this stage separately
+    def stage_3(self):
+        """Analysis."""
+
+        analysis_scripts = ['segmentation_analysis.py']
+
+        tds = []
+        for run_script in analysis_scripts:
+            tds.append(rp.TaskDescription({
+                'uid': self.emgr.generate_task_uid(prefix=self.name,
+                                                   stage_id=2),
+                'executable': 'python',
+                'arguments': [f'$RP_PILOT_SANDBOX/{run_script}',
+                              '--images_dir', self.output_dir],
+                'pre_exec': self.emgr.cfg.task_pre_exec or [],
+                'named_env': 'rp',
+                'ranks': 1
+            }))
+        return len(self.emgr.submit_tasks(tds))
 
 
 # ------------------------------------------------------------------------------
