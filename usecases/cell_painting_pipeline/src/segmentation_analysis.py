@@ -169,7 +169,11 @@ class Analysis:
         plt.ylabel('Mean Image Value')
         plt.title(f'c{c} features')
         plt.legend(['Mean ± Std'])
-        plt.show()
+        # plt.show()
+        plt.savefig(os.path.join(self.dataset.base_dir,
+                                 f'image_means_by_r_c{c}.png'),
+                    dpi=300, bbox_inches='tight')
+        plt.close()
 
         # Initialize a dictionary to store the means of the images for each r
         image_means_by_r = {}
@@ -213,7 +217,11 @@ class Analysis:
         plt.ylabel('Mean Image Value')
         plt.title(f'c{c} features')
         plt.legend(['Mean ± Std'])
-        plt.show()
+        # plt.show()
+        plt.savefig(os.path.join(self.dataset.base_dir,
+                                 f'image_means_by_r_c{c}.png'),
+                    dpi=300, bbox_inches='tight')
+        plt.close()
 
         # Initialize a dictionary to store the means of the images for each c
         image_means_by_c = {}
@@ -258,7 +266,11 @@ class Analysis:
         plt.ylabel('cell count')
         plt.title(f'r{r} cell count')
         plt.legend(['Mean ± Std'])
-        plt.show()
+        # plt.show()
+        plt.savefig(os.path.join(self.dataset.base_dir,
+                                 f'image_means_by_c_r{r}.png'),
+                    dpi=300, bbox_inches='tight')
+        plt.close()
 
 
 def get_args():
