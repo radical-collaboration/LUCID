@@ -3,30 +3,73 @@
 import argparse
 import os
 import sys
+import pickle
 
 import numpy as np
 import pandas as pd
 
-from collections import defaultdict
-
 from torch.utils.data import Dataset
-
-# Example transform using torchvision
-# from torchvision import transforms
-# transform = transforms.Compose([transforms.Resize((256, 256)),
-#                                 transforms.ToTensor()])
 
 from matplotlib import pyplot as plt
 from PIL import Image
+import matplotlib.patches as mpatches
+from tqdm import tqdm
 
-# example: r01c01f01p01-ch3sk1fk1fl1_ch3_nucleu_areas.png
-TGT_SUFFIX = '_ch3_nucleu_areas.png'
-# example: r01c01f01p01-ch2sk1fk1fl1_ch2_nucleu_mask.png
-SEG_SUFFIX = '_ch2_nucleu_mask.png'
-# example: r01c01f01p01-ch2sk1fk1fl1.tiff_cell_count.csv
-CSV_SUFFIX = '.tiff_cell_count.csv'
+# Updated suffix constants based on new dataset
+TGT_SUFFIX = '-ch3sk1fk1fl1_ch3_nucleus_areas.npy'
+SEG_SUFFIX = '-ch2sk1fk1fl1_ch2_nucleu_mask.png'
+CSV_SUFFIX = '-ch2sk1fk1fl1_cell_count.csv'
+CH8_SUFFIX = '-ch8sk1fk1fl1_ch8_nucleus_areas.npy'
+
 FEAT_TYPE_VALUES = ['pixel_avg', 'depth_maximize_pixel_avg', 'rpe_images']
 
+
+exp_setting = {}
+plate3_exp = {
+    'rad_2': {'r': [7,8], 'c': [1,2,3,4]},
+    'rad_1': {'r': [1,2,3,4], 'c': [1,2]},
+    'rad_0.1': {'r':[1,2,3,4],'c':[6,7]},
+    'rad_0.01':{'r':[7,8],'c':[9,10,11,12]},
+    'rad_0.001':{'r':[1,2,3,4],'c':[11,12]}
+}
+plate8_exp_green = {
+    'rad_2': {'r':[7],'c':[3,4]},
+    'rad_1': {'r':[4],'c':[1,2]},
+    'rad_0.1':{'r':[4],'c':[6,7]},
+    'rad_0.01':{'r':[8],'c':[11,12]},
+    'rad_0.001':{'r':[4],'c':[11,12]}
+}
+plate8_exp_red = {
+    'rad_2': {'r':[8],'c':[3,4]},
+    'rad_1': {'r':[3],'c':[1,2]},
+    'rad_0.1':{'r':[3],'c':[6,7]},
+    'rad_0.01':{'r':[7],'c':[11,12]},
+    'rad_0.001':{'r':[3],'c':[11,12]}
+}
+plate8_exp_yellow = {
+    'rad_2': {'r':[7,8],'c':[1,2]},
+    'rad_1': {'r':[1,2],'c':[1,2]},
+    'rad_0.1':{'r':[1,2],'c':[6,7]},
+    'rad_0.01':{'r':[7,8],'c':[9,10]},
+    'rad_0.001':{'r':[1,2],'c':[11,12]}
+}
+exp_setting['plate3_exp'] = plate3_exp
+exp_setting['plate8_exp_green'] = plate8_exp_green
+exp_setting['plate8_exp_red'] = plate8_exp_red
+exp_setting['plate8_exp_yellow'] = plate8_exp_yellow
+# dye labels
+dye_label = {
+    'plate3_exp': None,
+    'plate8_exp_green':'caspase on ch3',
+    'plate8_exp_red':'caspase on ch3 and h2ax on ch8',
+    'plate8_exp_yellow':'h2ax on ch3'
+}
+dye_label_ch8 = {
+    'plate3_exp':'normal ch8',
+    'plate8_exp_green':'normal ch8',
+    'plate8_exp_red':'h2ax on ch8',
+    'plate8_exp_yellow':'normal ch8'
+}
 
 class CellPaintDataset(Dataset):
 
@@ -45,249 +88,199 @@ class CellPaintDataset(Dataset):
         assert self.feat_type in FEAT_TYPE_VALUES, 'Unknown feature type'
         self.transform = transform
 
-        # store each record as a dictionary ("run_name" points to the record)
+        # store each record as a dictionary
         self.data = {}
-        self.samples = defaultdict(dict)
+        seen_runs = set()  # updated: track unique run_name prefixes
 
-        # Walk through the directory structure and gather file paths
+        # Walk through the directory and gather file paths per run
         for curr_dir, _, files in os.walk(self.base_dir):
             for file in files:
                 if not file.endswith(TGT_SUFFIX):
                     continue
-                ch3_name = os.path.splitext(file)[0]
-                ch2_name_base = ch3_name.replace('ch3', 'ch2')[:25]
-                # Create a record dictionary
-                r = {
-                    'run_name': ch3_name[:12],
-                    'feat_image_path': f'{curr_dir}/{ch3_name}.npy',
-                    'seg_image_path': f'{curr_dir}/{ch2_name_base}{SEG_SUFFIX}',
-                    'csv_path': f'{curr_dir}/{ch2_name_base}{CSV_SUFFIX}'
+                full_base = os.path.splitext(file)[0]
+                run_key = full_base[:9]  # updated: r01c01f01 prefix
+                if run_key in seen_runs:
+                    continue  # updated: skip duplicates
+                seen_runs.add(run_key)
+
+                # Gather lists of file paths for each p
+                ch3_list = []
+                ch8_list = []
+                seg_list = []
+                csv_list = []  
+                for p in range(1, 16):
+                    p2d = f'p{p:02d}'
+                    ch3_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{TGT_SUFFIX}")) 
+                    ch8_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{CH8_SUFFIX}"))
+                    seg_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{SEG_SUFFIX}"))
+                    csv_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{CSV_SUFFIX}"))
+
+                # Create record dictionary
+                record = {
+                    'run_name': run_key,
+                    'feat_image_path': ch3_list,
+                    'seg_image_path': seg_list,
+                    'csv_path': csv_list,
+                    'ch8_paths': ch8_list,
                 }
-                # Load the CSV file to get the cell count
-                # (assume the count is in the first row)
+
+                # Load CSVs to get cell counts
                 try:
-                    df = pd.read_csv(r['csv_path'])
-                    r['cell_count'] = df['cell_count'][0]
+                    counts = []
+                    for csv_p in csv_list:
+                        df = pd.read_csv(csv_p)
+                        counts.append(df['cell_count'][0])
+                    record['cell_count'] = counts
                 except Exception as e:
-                    print(f'Error reading CSV file {r["csv_path"]}: {e}')
+                    print(f'Error reading CSV {csv_p}: {e}')
                     continue
 
-                self.data[r['run_name']] = r  # old name "image_list"
-                self.samples[r['run_name'][:9]].\
-                    setdefault('list', []).append(r['run_name'])
+                self.data[run_key] = record
 
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self, idx):
-        return self.data[self._get_run_name(idx)]
-
-    def _get_run_name(self, idx):
+    def _get_run_name(self, idx):  # added helper for indexing
         return sorted(self.data.keys())[idx] if idx is not None else None
 
-    def feat_func(self, idx=None, run_name=None, feat_type=None):
+    def __getitem__(self, idx):
+        run_name = self._get_run_name(idx)
+        record = self.data[run_name]
 
-        run_name = run_name or self._get_run_name(idx)
+        # compute features for ch3 (default) and ch8
+        feat3 = self.feat_func(record, feat_type=self.feat_type, ch=3)
+        record['feature'] = feat3
+
+        feat8 = self.feat_func(record, feat_type=self.feat_type, ch=8)
+        record['feature8'] = feat8
+
+        return record
+
+    def feat_func(self, record, feat_type='pixel_avg', ch=3):
+        """
+        Compute feature based on feat_type and channel selection ch (3 or 8).
+        """
+        paths = record['feat_image_path'] if ch == 3 else record['ch8_paths']
+        arrays = []
+        for pth in paths:
+            arrays.append(np.load(pth))
 
         if feat_type == 'pixel_avg':
-            record = self.data[run_name]
-            img_array = np.load(record['feat_image_path'])
-            feature = img_array[img_array > 0].mean()
+            all_pix = np.concatenate([arr[arr > 0].ravel() for arr in arrays])
+            feature = all_pix.mean()
 
         elif feat_type == 'depth_maximize_pixel_avg':
-            img_list = []
-            for rn in self.samples[run_name[:9]]['list']:
-                img_list.append(np.load(self.data[rn]['feat_image_path']))
-
-            max_image = np.max(np.stack(img_list), axis=0)
-            feature = max_image[max_image > 0].mean()
+            stacked = np.stack(arrays)
+            max_img = np.max(stacked, axis=0)
+            feature = max_img[max_img > 0].mean()
 
         else:
             raise NotImplementedError()
+
         return feature
 
-    def set_sample_feature(self):
-        feat_type = 'depth_maximize_pixel_avg'
-        for sample_key, sample in self.samples.items():
-            sample['feature'] = self.feat_func(run_name=sample_key,
-                                               feat_type=feat_type)
-
-
 class Analysis:
-
-    def __init__(self, base_dir, feat_type, transform=None):
+    def __init__(self, base_dir, feat_type, week_name, transform=None):
         self.dataset = CellPaintDataset(base_dir=base_dir,
                                         feat_type=feat_type,
                                         transform=transform)
-        self.dataset.set_sample_feature()
+        # preload or generate data_dict
+        self.week_name = week_name
+        fp = f'{week_name}_dataset.pkl'
+        if os.path.exists(fp):
+            with open(fp, 'rb') as f:
+                self.data_dict = pickle.load(f)
+        else:
+            dd = {}
+            for rec in tqdm(self.dataset):
+                dd[rec['run_name']] = rec
+            with open(fp, 'wb') as f:
+                pickle.dump(dd, f)
+            self.data_dict = dd
 
     def plot(self):
+        # experiment settings
+        # choose experiments
+        if 'pl8' in self.week_name:
+            exp_list = ['plate8_exp_yellow','plate8_exp_green','plate8_exp_red']
+        elif 'plc' in self.week_name:
+            exp_list = ['platec_exp_yellow','platec_exp_green','platec_exp_red']
+        else:
+            exp_list = ['plate3_exp']
+        for exp in exp_list:
+            # ch3 plot
+            all_vals, all_rads, all_rc = [], [], []
+            img_by_rad = {rad:[] for rad in exp_setting[exp]}
+            for rad, cfg in exp_setting[exp].items():
+                for r in cfg['r']:
+                    for c in cfg['c']:
+                        for f in range(1,10):
+                            sn = f"r{r:02d}c{c:02d}f{f:02d}"
+                            if sn in self.data_dict:
+                                feat = self.data_dict[sn]['feature']/np.mean(self.data_dict[sn]['cell_count'])
+                                all_vals.append(feat); all_rads.append(rad); all_rc.append(f"r{r}c{c}")
+                                img_by_rad[rad].append(feat)
+            cmap = plt.get_cmap('tab10')
+            cmap_map = {rad:cmap(i) for i,rad in enumerate(img_by_rad)}
+            colors = [cmap_map[r] for r in all_rads]
+            plt.figure(figsize=(12,6))
+            x = np.arange(len(all_vals))
+            plt.bar(x, all_vals, color=colors)
+            plt.title(f"{self.week_name} {exp} ({dye_label[exp]}): cell average ch3 nucleus")
+            plt.xlabel('Index'); plt.ylabel('Mean of max-projection')
+            ticks=[]; prev=None
+            for lab in all_rc:
+                ticks.append(lab if lab!=prev else ''); prev=lab
+            plt.xticks(x,ticks,rotation=90)
+            patches=[mpatches.Patch(color=cmap_map[r], label=r) for r in img_by_rad]
+            plt.legend(handles=patches, title='rad', bbox_to_anchor=(1.05,1), loc='upper left')
+            plt.tight_layout()
+            plt.savefig(f"./draw_result/{self.week_name}_{exp}_ch3.png")
+            plt.close()
+            # ch8 plot for red experiments
+            if 'red' in exp:
+                all_vals, all_rads, all_rc = [], [], []
+                img_by_rad = {rad:[] for rad in exp_setting[exp]}
+                for rad, cfg in exp_setting[exp].items():
+                    for r in cfg['r']:
+                        for c in cfg['c']:
+                            for f in range(1,10):
+                                sn = f"r{r:02d}c{c:02d}f{f:02d}"
+                                if sn in self.data_dict:
+                                    feat = self.data_dict[sn]['feature8']/np.mean(self.data_dict[sn]['cell_count'])
+                                    all_vals.append(feat); all_rads.append(rad); all_rc.append(f"r{r}c{c}")
+                                    img_by_rad[rad].append(feat)
+                cmap = plt.get_cmap('tab10')
+                cmap_map = {rad:cmap(i) for i,rad in enumerate(img_by_rad)}
+                colors = [cmap_map[r] for r in all_rads]
+                plt.figure(figsize=(12,6))
+                x = np.arange(len(all_vals))
+                plt.bar(x, all_vals, color=colors)
+                plt.title(f"{self.week_name} {exp} ({dye_label_ch8[exp]}): cell average ch8 nucleus")
+                plt.xlabel('Index'); plt.ylabel('Mean of max-projection')
+                ticks=[]; prev=None
+                for lab in all_rc:
+                    ticks.append(lab if lab!=prev else ''); prev=lab
+                plt.xticks(x,ticks,rotation=90)
+                patches=[mpatches.Patch(color=cmap_map[r], label=r) for r in img_by_rad]
+                plt.legend(handles=patches, title='rad', bbox_to_anchor=(1.05,1), loc='upper left')
+                plt.tight_layout()
+                plt.savefig(f"./draw_result/{self.week_name}_{exp}_ch8.png")
+                plt.close()
 
-        sample_list = self.dataset.samples
-        image_list = self.dataset.data
-
-        # Initialize a dictionary to store the means of the images for each r
-        image_means_by_r = {}
-        c = '06'
-        # Iterate through the values of r
-        for r in ['01', '02', '03', '04', '05', '06', '07', '08']:
-            # Initialize a list to store the means for the current r
-            image_means = []
-            # Iterate through the values of f
-            for f in range(1, 10):  # f takes values from '01' to '09'
-                # Iterate through the images
-                for p in ['01']:  # Assuming there are 5 images (p01 to p05)
-                    # Load the TIFF image
-                    sample_name = f'r{r}c{c}f{f:02d}'
-                    if sample_name in sample_list:
-                        feature = sample_list[sample_name]['feature']
-                        image_means.append(feature)
-                    else:
-                        # print('no', run_name)
-                        pass
-
-            # Store the means for the current r
-            image_means_by_r[r] = image_means
-
-        # Calculate the mean and standard deviation for each r
-        mean_std_by_r = {r: (np.mean(means), np.std(means)) for r, means in
-                         image_means_by_r.items()}
-
-        # Plot the mean and standard deviation for each r
-        labels = list(mean_std_by_r.keys())
-
-        means = [mean_std_by_r[r][0] for r in labels]
-        stds = [mean_std_by_r[r][1] for r in labels]
-        labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
-        x = range(len(labels))  # X-axis positions
-
-        plt.figure(figsize=(8, 6))
-        plt.bar(x, means, yerr=stds, capsize=5,
-                color=['blue', 'orange', 'green', 'red'])
-        plt.xticks(x, labels)
-        plt.xlabel('r values')
-        plt.ylabel('Mean Image Value')
-        plt.title(f'c{c} features')
-        plt.legend(['Mean ± Std'])
-        # plt.show()
-        plt.savefig(os.path.join(self.dataset.base_dir,
-                                 f'image_means_by_r_c{c}.png'),
-                    dpi=300, bbox_inches='tight')
-        plt.close()
-
-        # Initialize a dictionary to store the means of the images for each r
-        image_means_by_r = {}
-        c = '12'
-        # Iterate through the values of r
-        for r in ['01', '02', '03', '04', '05', '06', '07', '08']:
-            # Initialize a list to store the means for the current r
-            image_means = []
-            # Iterate through the values of f
-            for f in range(1, 10):  # f takes values from '01' to '09'
-                # Iterate through the images
-                for p in ['01']:  # Assuming there are 5 images (p01 to p05)
-                    # Load the TIFF image
-                    sample_name = f'r{r}c{c}f{f:02d}'
-                    if sample_name in sample_list:
-                        feature = sample_list[sample_name]['feature']
-                        image_means.append(feature)
-                    else:
-                        # print('no', run_name)
-                        pass
-
-            # Store the means for the current r
-            image_means_by_r[r] = image_means
-
-        # Calculate the mean and standard deviation for each r
-        mean_std_by_r = {r: (np.mean(means), np.std(means)) for r, means in
-                         image_means_by_r.items()}
-
-        # Plot the mean and standard deviation for each r
-        labels = list(mean_std_by_r.keys())
-        means = [mean_std_by_r[r][0] for r in labels]
-        stds = [mean_std_by_r[r][1] for r in labels]
-
-        x = range(len(labels))  # X-axis positions
-
-        plt.figure(figsize=(8, 6))
-        plt.bar(x, means, yerr=stds, capsize=5,
-                color=['blue', 'orange', 'green', 'red'])
-        plt.xticks(x, labels)
-        plt.xlabel('r values')
-        plt.ylabel('Mean Image Value')
-        plt.title(f'c{c} features')
-        plt.legend(['Mean ± Std'])
-        # plt.show()
-        plt.savefig(os.path.join(self.dataset.base_dir,
-                                 f'image_means_by_r_c{c}.png'),
-                    dpi=300, bbox_inches='tight')
-        plt.close()
-
-        # Initialize a dictionary to store the means of the images for each c
-        image_means_by_c = {}
-        r = '06'
-        # Iterate through the values of r
-        for c in range(1, 13):
-            # Initialize a list to store the means for the current c
-            image_means = []
-            # Iterate through the values of f
-            for f in range(1, 10):  # f takes values from '01' to '09'
-                # Iterate through the images
-                for p in range(1,
-                               16):  # Assuming there are 5 images (p01 to p05)
-                    # Load the TIFF image
-                    run_name = f'r{r}c{c:02d}f{f:02d}p{p:02d}'
-                    if run_name in image_list:
-                        cell_count = image_list[run_name]['cell_count']
-                        image_means.append(cell_count)
-                    else:
-                        # print('no', run_name)
-                        pass
-
-            # Store the means for the current r
-            image_means_by_c[c] = image_means
-
-        # Calculate the mean and standard deviation for each r
-        mean_std_by_c = {c: (np.mean(means), np.std(means)) for c, means in
-                         image_means_by_c.items()}
-
-        # Plot the mean and standard deviation for each r
-        labels = list(mean_std_by_c.keys())
-        means = [mean_std_by_c[c][0] for c in labels]
-        stds = [mean_std_by_c[c][1] for c in labels]
-
-        x = range(len(labels))  # X-axis positions
-
-        plt.figure(figsize=(8, 6))
-        plt.bar(x, means, yerr=stds, capsize=5,
-                color=['blue', 'orange', 'green', 'red'])
-        plt.xticks(x, labels)
-        plt.xlabel('c values')
-        plt.ylabel('cell count')
-        plt.title(f'r{r} cell count')
-        plt.legend(['Mean ± Std'])
-        # plt.show()
-        plt.savefig(os.path.join(self.dataset.base_dir,
-                                 f'image_means_by_c_r{r}.png'),
-                    dpi=300, bbox_inches='tight')
-        plt.close()
 
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '-i', '--images_dir',
-        dest='images_dir',
-        type=str,
-        required=False,
-        help='directory path of input images')
+    parser.add_argument('-i','--images_dir',dest='images_dir',type=str,required=True,help='directory path of input images')
+    parser.add_argument('-w','--week_name',dest='week_name',type=str,required=True,help='week name prefix for data dump')
     return parser.parse_args(sys.argv[1:])
-
 
 if __name__ == '__main__':
     args = get_args()
     try:
         Analysis(base_dir=args.images_dir,
-                 feat_type='depth_maximize_pixel_avg').plot()
+                 feat_type='depth_maximize_pixel_avg',
+                 week_name=args.week_name).plot()
     except Exception as e:
         print(e)
