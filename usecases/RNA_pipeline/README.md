@@ -1,5 +1,5 @@
 # End-to-End Pipeline 
-![](pipeline.png)
+![](sample_imgs/pipeline.png)
 * input: reads.bam and GRCh38.fasta -> BEDtools & StringTie & Bedtools getfasta (Using Galaxy tools official website) -> output1.fasta
 * output1.fasta -> LoRA-BERT -> d0W1R1.csv
 * d0W1R1.csv -> Top100.py -> d0W1R1_top100.fasta
