@@ -30,3 +30,7 @@ python TargetSequence_location.py -i ./Data/novel_lncRNA -o gene_location.csv
 ### 2.2. Location_StringTie.py
 *Example command prompt
 python Location_StringTie.py -i gene_location.csv -s ./Data/Strintie_output
+
+
+# RCT Script
+The script under the /src directory currently runs the pipeline steps 1 and 2.  Parts that require Galaxy tools is not added to the script
