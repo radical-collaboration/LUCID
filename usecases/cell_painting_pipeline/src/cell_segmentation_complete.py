@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import glob
 import os
 import sys
 import time
@@ -10,13 +11,17 @@ import matplotlib.patches as patches
 import numpy as np
 import pandas as pd
 
+from typing import Optional
+
 from PIL import Image
-from scipy.ndimage import binary_dilation
+from scipy.ndimage import binary_dilation, label
 
 import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 from cellSAM import segment_cellular_image, get_model
+
+SUPPORTED_IMAGE_EXT = ('.png', '.tif', '.tiff')
 
 SCALED_SIZE = 1024
 CELL_COUNT_SUFFIX = '_cell_count.csv'
@@ -24,162 +29,191 @@ CELL_COUNT_SUFFIX = '_cell_count.csv'
 
 class Segmentation:
 
-    def __init__(self, image_path, output_dir=None):
+    def __init__(self, base_channel: str, target_channel: str,
+                 image_path: str, output_dir: Optional[str] = None,
+                 save_bbox: bool = False, bbox_threshold: float = 0.35):
 
         self.elapsed_time = 0.
+
+        self.save_bbox = save_bbox
+        self.bbox_threshold = bbox_threshold
 
         # set input/output directories
         self.input_dir = os.path.dirname(image_path)
         self.output_dir = output_dir or self.input_dir
 
         # get image file names
-        self.ch2 = {'file': os.path.basename(image_path),
-                    'path': image_path}
-        self.ch3 = {'file': self.ch2['file'].replace('ch2', 'ch3')}
+        self.ch_base = {'name': base_channel,
+                        'file': os.path.basename(image_path),
+                        'path': image_path}
+        self.ch_tgt = {'name': target_channel,
+                       'file': self.ch_base['file'].replace(base_channel,
+                                                            target_channel)}
+        self.ch_tgt['path'] = os.path.join(self.input_dir, self.ch_tgt['file'])
 
-        image_ch3_path = os.path.join(self.input_dir, self.ch3['file'])
-        if not os.path.exists(image_ch3_path):
-            raise Exception(f'Matching ch3 file not found '
-                            f'for {self.ch2["file"]}, skipping.')
+        if not os.path.exists(self.ch_tgt['path']):
+            raise Exception(f'Matching target channel {target_channel} file '
+                            f'not found for {self.ch_base["file"]}, skipping.')
+
+        self.ch_base['file_stub'] = os.path.splitext(self.ch_base['file'])[0]
+        self.ch_tgt['file_stub'] = os.path.splitext(self.ch_tgt['file'])[0]
 
         # load images
-        self.ch2['img'] = np.array(Image.open(image_path))
-        self.ch3['img'] = np.array(Image.open(image_ch3_path))
+        self.ch_base['img'] = np.array(Image.open(self.ch_base['path']))
+        self.ch_tgt['img'] = np.array(Image.open(self.ch_tgt['path']))
 
     def save_cell_count(self, cell_count):
-        output_file = self.ch2['file'] + CELL_COUNT_SUFFIX
-        df = pd.DataFrame({'image_path': [self.ch2['file']],
+        output_file = self.ch_base['file_stub'] + CELL_COUNT_SUFFIX
+        df = pd.DataFrame({'image_path': [self.ch_base['file']],
                            'cell_count': [cell_count]})
         df.to_csv(os.path.join(self.output_dir, output_file), index=False)
 
-    def plot(self, mask, bounding_boxes):
-
-        # Plot and save original ch2 image
-        plt.figure()
-        plt.imshow(self.ch2['img'], cmap='viridis')
-        plt.axis('off')
-        # plt.title(self.ch2['file'])
-        output_file = self.ch2['file'].replace('.tiff', '_ch2_ori.png')
-        plt.savefig(os.path.join(self.output_dir, output_file),
-                    dpi=300, bbox_inches='tight')
-        plt.close()
-
-        # Plot and save original ch3 image
-        plt.figure()
-        plt.imshow(self.ch3['img'], cmap='viridis')
-        plt.axis('off')
-        # plt.title(self.ch3['file'])
-        output_file = self.ch3['file'].replace('.tiff', '_ch3_ori.png')
-        plt.savefig(os.path.join(self.output_dir, output_file),
-                    dpi=300, bbox_inches='tight')
-        plt.close()
-
-        # Plot and save mask
-        plt.figure()
-        plt.imshow(mask, cmap='viridis')
-        plt.axis('off')
-        # plt.title(f'{self.ch2["file"]} nucleus masks')
-        output_file = self.ch2['file'].replace('.tiff', '_ch2_nucleu_mask.png')
-        plt.savefig(os.path.join(self.output_dir, output_file),
-                    dpi=300, bbox_inches='tight')
-        plt.close()
-
-        # Plot and save bounding boxes
+    def plot_bbox(self, bounding_boxes):
+        # plot and save bounding boxes
         fig, ax = plt.subplots()
-        ax.imshow(self.ch2['img'])
-        scale_factor = self.ch2['img'].shape[0] / SCALED_SIZE
-        bounding_boxes = bounding_boxes.cpu().numpy()
+        ax.imshow(self.ch_base['img'])
+        scale_factor = self.ch_base['img'].shape[0] / SCALED_SIZE
         for bbox in bounding_boxes:
             xmin, ymin, xmax, ymax = bbox
-            xmin_new = xmin * scale_factor
-            ymin_new = ymin * scale_factor
-            xmax_new = xmax * scale_factor
-            ymax_new = ymax * scale_factor
-            width = xmax_new - xmin_new
-            height = ymax_new - ymin_new
+            xmin_new, ymin_new = xmin * scale_factor, ymin * scale_factor
+            width = (xmax - xmin) * scale_factor
+            height = (ymax - ymin) * scale_factor
             ax.add_patch(patches.Rectangle((xmin_new, ymin_new), width, height,
                                            linewidth=1, edgecolor='r',
                                            facecolor='none'))
-        plt.axis('off')
-        # plt.title(f'{self.ch2["file"]} nucleu bounding boxes')
-        output_file = self.ch2['file'].replace('.tiff', '_ch2_nucleu_bbx.png')
-        plt.savefig(os.path.join(self.output_dir, output_file),
+        ax.axis('off')
+        file_name = '%(file_stub)s_%(name)s_nucleu_bbx.png' % self.ch_base
+        fig.savefig(os.path.join(self.output_dir, file_name),
                     dpi=300, bbox_inches='tight')
         plt.close()
 
-        # Plot and save mask for the ch3 image
+    def plot(self, mask):
+
+        # plot and save original base-/target-channel image
+        for ch in [self.ch_base, self.ch_tgt]:
+            file_name = '%(file_stub)s_%(name)s_ori.png' % ch
+            plt.imsave(os.path.join(self.output_dir, file_name),
+                       ch['img'], cmap='viridis')
+
+        file_name = '%(file_stub)s_%(name)s_nucleu_mask.png' % self.ch_base
+        plt.imsave(os.path.join(self.output_dir, file_name),
+                   mask, cmap='viridis')
+
+        instance_mask, num_instances = label(mask)
+        print(f'Identified {num_instances} instances in the mask.')
+        file_name = '%(file_stub)s_%(name)s_instance_mask.npy' % self.ch_base
+        np.save(os.path.join(self.output_dir, file_name), instance_mask)
+
+        # apply binary mask to target channel
         binary_mask = (mask > 0).astype(np.uint8)
-        # Expand if image is RGB
-        if self.ch2['img'].ndim == 3 and self.ch2['img'].shape[2] == 3:
+        # expand if image is RGB
+        if self.ch_base['img'].ndim == 3 and self.ch_base['img'].shape[2] == 3:
             binary_mask = np.stack([binary_mask] * 3, axis=-1)
-        masked_image_ch3 = self.ch3['img'] * binary_mask
-        output_file = self.ch3['file'].replace('.tiff', '_ch3_nucleu_areas.npy')
-        np.save(os.path.join(self.output_dir, output_file), masked_image_ch3)
-        # Normalize masked image (NOTE: not used?)
-        normalized_masked_image_ch3 = (
-            (masked_image_ch3 - masked_image_ch3.min()) /
-            (masked_image_ch3.max() - masked_image_ch3.min()))
-        plt.figure()
-        plt.imshow(masked_image_ch3, cmap='viridis')
-        plt.axis('off')
-        # plt.title(f'{self.ch2["file"]} nucleus areas')
-        output_file = self.ch3['file'].replace('.tiff', '_ch3_nucleu_areas.png')
-        plt.savefig(os.path.join(self.output_dir, output_file),
-                    dpi=300, bbox_inches='tight')
-        plt.close()
+
+        masked_image = self.ch_tgt['img'] * binary_mask
+        file_name = '%(file_stub)s_%(name)s_masked.npy' % self.ch_tgt
+        np.save(os.path.join(self.output_dir, file_name), masked_image)
+        file_name = '%(file_stub)s_%(name)s_masked.png' % self.ch_tgt
+        plt.imsave(os.path.join(self.output_dir, file_name),
+                   masked_image, cmap='viridis')
 
     def run(self):
 
-        print(f'Processing {self.ch2["file"]} '
-              f'(image shape: {self.ch2["img"].shape})')
+        print(f'Processing {self.ch_base["file"]} '
+              f'(image shape: {self.ch_base["img"].shape})')
         # Start timing
         start_time = time.time()
 
         # Segment the ch2 image
         mask, embedding, bounding_boxes = segment_cellular_image(
-            self.ch2['img'],
-            bbox_threshold=0.35,
+            self.ch_base['img'],
+            bbox_threshold=self.bbox_threshold,
             normalize=True,
             device=str(device))
 
-        # Get the number of cells detected (bounding_boxes.shape[0])
-        cell_count = bounding_boxes.shape[0]
-        print(f'Number of cells in {self.ch2["file"]}: {cell_count}')
-        # Save the image path and cell count in a CSV file
-        self.save_cell_count(cell_count)
+        if mask is None or not hasattr(mask, 'shape'):
+            raise Exception(f'Invalid mask for {self.ch_base["file"]}, '
+                            f'skipping.')
+
+        if self.save_bbox:
+            bounding_boxes = bounding_boxes.cpu().numpy()
+            # get the number of cells detected (bounding_boxes.shape[0])
+            cell_count = bounding_boxes.shape[0]
+            print(f'Number of cells in {self.ch_base["file"]}: {cell_count}')
+            # save the image path and cell count in a CSV file
+            self.save_cell_count(cell_count)
+            self.plot_bbox(bounding_boxes)
+
+        self.plot(mask)
 
         end_time = time.time()
         self.elapsed_time = end_time - start_time
-
-        if mask is None or not hasattr(mask, 'shape'):
-            raise Exception(f'Invalid mask for {self.ch2["file"]}, skipping.')
-
-        self.plot(mask, bounding_boxes)
-
-        print(f'Finished processing {self.ch2["file"]} ' 
+        print(f'Finished processing {self.ch_base["file"]} ' 
               f'Time: {self.elapsed_time:.2f} seconds\n')
 
 
 def get_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
+    parser = argparse.ArgumentParser(
+        description='Process cellular images with segmentation.')
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         '--image_path',
-        dest='image_path',
         type=str,
-        required=True)
+        help='Path to the base/target channel image.')
+    group.add_argument(
+        '--input_dir',
+        type=str,
+        help='Path to the input directory with base/target channel images.')
+
     parser.add_argument(
         '--output_dir',
-        dest='output_dir',
         type=str,
-        required=False)
+        required=True,
+        help='Path to the output directory to save results.')
+    parser.add_argument(
+        '--base_channel',
+        type=str,
+        required=True,
+        help='Channel used for nucleus segmentation (e.g., "ch2").')
+    parser.add_argument(
+        '--target_channel',
+        type=str,
+        required=True,
+        help='Channel to apply the segmentation mask to (e.g., "ch8").')
+    parser.add_argument(
+        '--save_bbox',
+        action='store_true',
+        help='Save bounding box visualizations and cell count CSV.')
+    parser.add_argument(
+        '--bbox_threshold',
+        type=float,
+        default=0.35,
+        help='Threshold for selecting bounding boxes in segmentation.')
     return parser.parse_args(sys.argv[1:])
 
 
 if __name__ == '__main__':
     args = get_args()
-    try:
-        Segmentation(image_path=args.image_path,
-                     output_dir=args.output_dir).run()
-    except Exception as e:
-        print(e)
+
+    image_path_list = []
+    if args.image_path:
+        assert args.image_path.endswith(SUPPORTED_IMAGE_EXT)
+        image_path_list.append(args.image_path)
+    elif args.input_dir:
+        for image_path in glob.glob(f'{args.input_dir}/*'):
+            f = os.path.basename(image_path).lower()
+            if args.base_channel in f and f.endswith(SUPPORTED_IMAGE_EXT):
+                image_path_list.append(image_path)
+
+    for image_path in image_path_list:
+        try:
+            Segmentation(base_channel=args.base_channel,
+                         target_channel=args.target_channel,
+                         image_path=image_path,
+                         output_dir=args.output_dir,
+                         save_bbox=args.save_bbox,
+                         bbox_threshold=args.bbox_threshold).run()
+        except Exception as e:
+            print(e)
 
