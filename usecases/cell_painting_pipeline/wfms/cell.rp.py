@@ -27,11 +27,11 @@ os.environ['RADICAL_REPORT'] = 'TRUE'
 #             f'cd {WFMS_DIR} && cp resource_bnl.json .radical/pilot/configs/')
 
 
-def filter_input_images(images_dir: str) -> list:
+def filter_input_images(images_dir: str, base_channel: str) -> list:
     output = []
     for image_path in glob.glob(f'{images_dir}/*'):
         f = os.path.basename(image_path).lower()
-        if 'ch2' in f and f.endswith(('.png', '.tif', '.tiff')):
+        if base_channel in f and f.endswith(('.png', '.tif', '.tiff')):
             output.append(image_path)
     return output
 
@@ -101,20 +101,26 @@ class Pipeline:
 
     def __init__(self,
                  emgr: ExecManager,
+                 config: ru.TypedDict,
                  image_path: Optional[str] = None,
-                 images_dir: Optional[str] = None,
+                 input_dir: Optional[str] = None,
                  output_dir: Optional[str] = None):
 
         self.emgr = emgr  # exec manager TODO: should it be isolated?
         self.name = self.emgr.generate_pipe_uid()
 
+        self.cfg = config.pipeline_cfg
+
         self.images = []
         if image_path:
             self.images.append(image_path)
-        if images_dir and os.path.isdir(images_dir):
-            self.images.extend(filter_input_images(images_dir))
+        elif input_dir and os.path.isdir(input_dir):
+            self.images.extend(filter_input_images(
+                images_dir=input_dir, base_channel=self.cfg.base_channel))
 
-        self.output_dir = output_dir or os.path.dirname(self.images[0])
+        self.output_dir = output_dir or \
+                          self.cfg.output_dir or \
+                          os.path.dirname(self.images[0])
         os.makedirs(self.output_dir, exist_ok=True)
 
         self.stage_id = 0
@@ -141,9 +147,12 @@ class Pipeline:
         #                         'cell_segmentation.py']
         segmentation_scripts = ['cell_segmentation_complete.py']
 
-        arguments = []
-        if self.output_dir:
-            arguments = ['--output_dir', self.output_dir]
+        arguments = ['--base_channel', self.cfg.base_channel,
+                     '--target_channel', self.cfg.target_channel,
+                     '--bbox_threshold', self.cfg.bbox_threshold,
+                     '--output_dir', self.output_dir]
+        if self.cfg.save_bbox:
+            arguments += ['--save_bbox']
 
         submitted_tasks = 0
         tds = []
@@ -204,8 +213,8 @@ def get_args():
         required=False,
         help='work space for RADICAL-Pilot session sandboxes')
     parser.add_argument(
-        '-i', '--images_dir',
-        dest='images_dir',
+        '-i', '--input_dir',
+        dest='input_dir',
         type=str,
         required=False,
         help='directory path of input images')
@@ -248,17 +257,17 @@ def main():
 
     exec_mgr = ExecManager(config=config, work_dir=args.work_dir)
 
-    images_dir = args.images_dir or config.pipeline_cfg.images_dir
-    output_dir = args.output_dir or config.pipeline_cfg.output_dir
+    input_dir = args.input_dir or config.pipeline_cfg.input_dir
     # NOTE: create a pipeline per directory with images, thus stage2 will be
     #       applied to all images generated from the same directory.
-    images_dirs = [d for d in glob.glob(f'{images_dir}/*') if os.path.isdir(d)]
-    images_dirs = images_dirs or [images_dir]
+    input_dirs = [d for d in glob.glob(f'{input_dir}/*') if os.path.isdir(d)]
+    input_dirs = input_dirs or [input_dir]
     pipes = {}
-    for images_dir in images_dirs:
+    for input_dir in input_dirs:
         p = Pipeline(emgr=exec_mgr,
-                     images_dir=images_dir,
-                     output_dir=output_dir)
+                     config=config,
+                     input_dir=input_dir,
+                     output_dir=args.output_dir)
         pipes[p.name] = p
 
     # start executing pipelines (submit stages 1)

@@ -1,14 +1,18 @@
 {
     "run_description": {
-        "resource"     : "bnl.ic2_csi",
-        "project"      : "csihpc",
-        "nodes"        : 1,
-        "runtime"      : 60
+        "resource": "bnl.ic2_csi",
+        "project": "csihpc",
+        "nodes": 1,
+        "runtime": 60
     },
 
     "pipeline_cfg": {
-        "images_dir"   : "/hpcgpfs01/scratch/mtitov/cell_painting_images/Images",
-        "output_dir"   : "/hpcgpfs01/scratch/mtitov/cell_painting_images/output"
+        "input_dir": "/hpcgpfs01/scratch/mtitov/cell_painting_images/Images",
+        "output_dir": "/hpcgpfs01/scratch/mtitov/cell_painting_images/output",
+        "base_channel": "ch2",
+        "target_channel": "ch3",
+        "save_bbox": true,
+        "bbox_threshold": 0.35
     },
 
     "exec_cfg": {
