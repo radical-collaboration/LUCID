@@ -12,7 +12,9 @@
         "base_channel": "ch2",
         "target_channel": "ch3",
         "save_bbox": true,
-        "bbox_threshold": 0.35
+        "bbox_threshold": 0.35, 
+        "week_name": "week1",
+        "plate_name": "plate8"
     },
 
     "exec_cfg": {

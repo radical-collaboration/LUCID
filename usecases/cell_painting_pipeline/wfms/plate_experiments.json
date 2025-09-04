@@ -1,0 +1,43 @@
+{
+    "exp_setting": {
+        "plate3_exp": {
+            "rad_2": {"r": [7, 8], "c": [1, 2, 3, 4]},
+            "rad_1": {"r": [1, 2, 3, 4], "c": [1, 2]},
+            "rad_0.1": {"r": [1, 2, 3, 4], "c": [6, 7]},
+            "rad_0.01": {"r": [7, 8], "c": [9, 10, 11, 12]},
+            "rad_0.001": {"r": [1, 2, 3, 4], "c": [11, 12]}
+        },
+        "plate8_exp_green": {
+            "rad_2": {"r": [7], "c": [3, 4]},
+            "rad_1": {"r": [4], "c": [1, 2]},
+            "rad_0.1": {"r": [4], "c": [6, 7]},
+            "rad_0.01": {"r": [8], "c": [11, 12]},
+            "rad_0.001": {"r": [4], "c": [11, 12]}
+        },
+        "plate8_exp_red": {
+            "rad_2": {"r": [8], "c": [3, 4]},
+            "rad_1": {"r": [3], "c": [1, 2]},
+            "rad_0.1": {"r": [3], "c": [6, 7]},
+            "rad_0.01": {"r": [7], "c": [11, 12]},
+            "rad_0.001": {"r": [3], "c": [11, 12]}
+        },
+        "plate8_exp_yellow": {
+            "rad_2": {"r": [7, 8], "c": [1, 2]},
+            "rad_1": {"r": [1, 2], "c": [1, 2]},
+            "rad_0.1": {"r": [1, 2], "c": [6, 7]},
+            "rad_0.01": {"r": [7, 8], "c": [9, 10]},
+            "rad_0.001": {"r": [1, 2], "c": [11, 12]}
+        }
+    },
+    "exp_list": {
+        "plate3": ["plate3_exp"],
+        "plate8": ["plate8_exp_green", "plate8_exp_red", "plate8_exp_yellow"],
+        "platec": ["platec_exp_green", "platec_exp_red", "platec_exp_yellow"]
+    },
+    "dye_label": {
+        "plate3_exp": null,
+        "plate8_exp_green": "caspase on ch3",
+        "plate8_exp_red": "caspase on ch3 and h2ax on ch8",
+        "plate8_exp_yellow": "h2ax on ch3"
+    }
+}

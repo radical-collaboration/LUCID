@@ -16,47 +16,10 @@ import matplotlib.patches as mpatches
 from tqdm import tqdm
 
 # Updated suffix constants based on new dataset
-TGT_SUFFIX = '-ch3sk1fk1fl1_ch3_nucleus_areas.npy'
-SEG_SUFFIX = '-ch2sk1fk1fl1_ch2_nucleu_mask.png'
-CSV_SUFFIX = '-ch2sk1fk1fl1_cell_count.csv'
-CH8_SUFFIX = '-ch8sk1fk1fl1_ch8_nucleus_areas.npy'
+
 
 FEAT_TYPE_VALUES = ['pixel_avg', 'depth_maximize_pixel_avg', 'rpe_images']
 
-
-exp_setting = {}
-plate3_exp = {
-    'rad_2': {'r': [7,8], 'c': [1,2,3,4]},
-    'rad_1': {'r': [1,2,3,4], 'c': [1,2]},
-    'rad_0.1': {'r':[1,2,3,4],'c':[6,7]},
-    'rad_0.01':{'r':[7,8],'c':[9,10,11,12]},
-    'rad_0.001':{'r':[1,2,3,4],'c':[11,12]}
-}
-plate8_exp_green = {
-    'rad_2': {'r':[7],'c':[3,4]},
-    'rad_1': {'r':[4],'c':[1,2]},
-    'rad_0.1':{'r':[4],'c':[6,7]},
-    'rad_0.01':{'r':[8],'c':[11,12]},
-    'rad_0.001':{'r':[4],'c':[11,12]}
-}
-plate8_exp_red = {
-    'rad_2': {'r':[8],'c':[3,4]},
-    'rad_1': {'r':[3],'c':[1,2]},
-    'rad_0.1':{'r':[3],'c':[6,7]},
-    'rad_0.01':{'r':[7],'c':[11,12]},
-    'rad_0.001':{'r':[3],'c':[11,12]}
-}
-plate8_exp_yellow = {
-    'rad_2': {'r':[7,8],'c':[1,2]},
-    'rad_1': {'r':[1,2],'c':[1,2]},
-    'rad_0.1':{'r':[1,2],'c':[6,7]},
-    'rad_0.01':{'r':[7,8],'c':[9,10]},
-    'rad_0.001':{'r':[1,2],'c':[11,12]}
-}
-exp_setting['plate3_exp'] = plate3_exp
-exp_setting['plate8_exp_green'] = plate8_exp_green
-exp_setting['plate8_exp_red'] = plate8_exp_red
-exp_setting['plate8_exp_yellow'] = plate8_exp_yellow
 # dye labels
 dye_label = {
     'plate3_exp': None,
@@ -64,17 +27,13 @@ dye_label = {
     'plate8_exp_red':'caspase on ch3 and h2ax on ch8',
     'plate8_exp_yellow':'h2ax on ch3'
 }
-dye_label_ch8 = {
-    'plate3_exp':'normal ch8',
-    'plate8_exp_green':'normal ch8',
-    'plate8_exp_red':'h2ax on ch8',
-    'plate8_exp_yellow':'normal ch8'
-}
 
 class CellPaintDataset(Dataset):
 
     def __init__(self,
                  base_dir: str,
+                 base_channel: str = 'ch2',
+                 target_channel: str = 'ch3',
                  feat_type: str = None,
                  transform=None):
         """
@@ -83,6 +42,10 @@ class CellPaintDataset(Dataset):
             feat_type (str, optional): Feature type. Defaults to 'pixel_avg'
             transform (callable, optional): Transform to be applied on the image
         """
+        
+        TGT_SUFFIX = f'-{target_channel}sk1fk1fl1_{target_channel}_nucleus_areas.npy'
+        SEG_SUFFIX = f'-{base_channel}sk1fk1fl1_{base_channel}_nucleu_mask.png'
+        CSV_SUFFIX = f'-{base_channel}sk1fk1fl1_cell_count.csv'
         self.base_dir = base_dir
         self.feat_type = feat_type or FEAT_TYPE_VALUES[0]
         assert self.feat_type in FEAT_TYPE_VALUES, 'Unknown feature type'
@@ -104,24 +67,21 @@ class CellPaintDataset(Dataset):
                 seen_runs.add(run_key)
 
                 # Gather lists of file paths for each p
-                ch3_list = []
-                ch8_list = []
+                tar_list = []
                 seg_list = []
                 csv_list = []  
                 for p in range(1, 16):
                     p2d = f'p{p:02d}'
-                    ch3_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{TGT_SUFFIX}")) 
-                    ch8_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{CH8_SUFFIX}"))
+                    tar_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{TGT_SUFFIX}")) 
                     seg_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{SEG_SUFFIX}"))
                     csv_list.append(os.path.join(curr_dir, f"{run_key}{p2d}{CSV_SUFFIX}"))
 
                 # Create record dictionary
                 record = {
                     'run_name': run_key,
-                    'feat_image_path': ch3_list,
+                    'feat_image_path': tar_list,
                     'seg_image_path': seg_list,
                     'csv_path': csv_list,
-                    'ch8_paths': ch8_list,
                 }
 
                 # Load CSVs to get cell counts
@@ -147,20 +107,16 @@ class CellPaintDataset(Dataset):
         run_name = self._get_run_name(idx)
         record = self.data[run_name]
 
-        # compute features for ch3 (default) and ch8
-        feat3 = self.feat_func(record, feat_type=self.feat_type, ch=3)
-        record['feature'] = feat3
-
-        feat8 = self.feat_func(record, feat_type=self.feat_type, ch=8)
-        record['feature8'] = feat8
+        feat = self.feat_func(record, feat_type=self.feat_type, ch=3)
+        record['feature'] = feat
 
         return record
 
-    def feat_func(self, record, feat_type='pixel_avg', ch=3):
+    def feat_func(self, record, feat_type='pixel_avg'):
         """
         Compute feature based on feat_type and channel selection ch (3 or 8).
         """
-        paths = record['feat_image_path'] if ch == 3 else record['ch8_paths']
+        paths = record['feat_image_path']
         arrays = []
         for pth in paths:
             arrays.append(np.load(pth))
@@ -180,13 +136,25 @@ class CellPaintDataset(Dataset):
         return feature
 
 class Analysis:
-    def __init__(self, base_dir, feat_type, week_name, transform=None):
-        self.dataset = CellPaintDataset(base_dir=base_dir,
-                                        feat_type=feat_type,
-                                        transform=transform)
+    def __init__(self, base_dir, feat_type, week_name, plate_name, base_channel, target_channel, plate_experiments, transform=None):
+        self.dataset = CellPaintDataset(
+            base_dir=base_dir,
+            base_channel=base_channel,
+            target_channel=target_channel,
+            feat_type=feat_type,
+            transform=transform,
+        )
         # preload or generate data_dict
         self.week_name = week_name
-        fp = f'{week_name}_dataset.pkl'
+        self.plate_name = plate_name
+        self.exp_setting = plate_experiments['exp_setting']
+        self.exp_list = plate_experiments['exp_list'][plate_name]
+        self.results_dir = os.path.join(base_dir, "results")
+        self.target_channel = target_channel
+        self.dye_label = plate_experiments['dye_label']
+        os.makedirs(self.results_dir, exist_ok=True)
+        
+        fp = f'{week_name}_{plate_name}_dataset.pkl'
         if os.path.exists(fp):
             with open(fp, 'rb') as f:
                 self.data_dict = pickle.load(f)
@@ -200,18 +168,10 @@ class Analysis:
 
     def plot(self):
         # experiment settings
-        # choose experiments
-        if 'pl8' in self.week_name:
-            exp_list = ['plate8_exp_yellow','plate8_exp_green','plate8_exp_red']
-        elif 'plc' in self.week_name:
-            exp_list = ['platec_exp_yellow','platec_exp_green','platec_exp_red']
-        else:
-            exp_list = ['plate3_exp']
-        for exp in exp_list:
-            # ch3 plot
+        for exp in self.exp_list:
             all_vals, all_rads, all_rc = [], [], []
-            img_by_rad = {rad:[] for rad in exp_setting[exp]}
-            for rad, cfg in exp_setting[exp].items():
+            img_by_rad = {rad:[] for rad in self.exp_setting[exp]}
+            for rad, cfg in self.exp_setting[exp].items():
                 for r in cfg['r']:
                     for c in cfg['c']:
                         for f in range(1,10):
@@ -226,7 +186,7 @@ class Analysis:
             plt.figure(figsize=(12,6))
             x = np.arange(len(all_vals))
             plt.bar(x, all_vals, color=colors)
-            plt.title(f"{self.week_name} {exp} ({dye_label[exp]}): cell average ch3 nucleus")
+            plt.title(f"{self.week_name} {self.plate_name} {exp} ({self.dye_label[exp]}): cell average {self.target_channel} nucleus")
             plt.xlabel('Index'); plt.ylabel('Mean of max-projection')
             ticks=[]; prev=None
             for lab in all_rc:
@@ -235,38 +195,9 @@ class Analysis:
             patches=[mpatches.Patch(color=cmap_map[r], label=r) for r in img_by_rad]
             plt.legend(handles=patches, title='rad', bbox_to_anchor=(1.05,1), loc='upper left')
             plt.tight_layout()
-            plt.savefig(f"./draw_result/{self.week_name}_{exp}_ch3.png")
+            save_path = os.path.join(self.results_dir, f"{self.week_name}_{self.plate_name}_{exp}_{self.target_channel}.png")
+            plt.savefig(save_path)
             plt.close()
-            # ch8 plot for red experiments
-            if 'red' in exp:
-                all_vals, all_rads, all_rc = [], [], []
-                img_by_rad = {rad:[] for rad in exp_setting[exp]}
-                for rad, cfg in exp_setting[exp].items():
-                    for r in cfg['r']:
-                        for c in cfg['c']:
-                            for f in range(1,10):
-                                sn = f"r{r:02d}c{c:02d}f{f:02d}"
-                                if sn in self.data_dict:
-                                    feat = self.data_dict[sn]['feature8']/np.mean(self.data_dict[sn]['cell_count'])
-                                    all_vals.append(feat); all_rads.append(rad); all_rc.append(f"r{r}c{c}")
-                                    img_by_rad[rad].append(feat)
-                cmap = plt.get_cmap('tab10')
-                cmap_map = {rad:cmap(i) for i,rad in enumerate(img_by_rad)}
-                colors = [cmap_map[r] for r in all_rads]
-                plt.figure(figsize=(12,6))
-                x = np.arange(len(all_vals))
-                plt.bar(x, all_vals, color=colors)
-                plt.title(f"{self.week_name} {exp} ({dye_label_ch8[exp]}): cell average ch8 nucleus")
-                plt.xlabel('Index'); plt.ylabel('Mean of max-projection')
-                ticks=[]; prev=None
-                for lab in all_rc:
-                    ticks.append(lab if lab!=prev else ''); prev=lab
-                plt.xticks(x,ticks,rotation=90)
-                patches=[mpatches.Patch(color=cmap_map[r], label=r) for r in img_by_rad]
-                plt.legend(handles=patches, title='rad', bbox_to_anchor=(1.05,1), loc='upper left')
-                plt.tight_layout()
-                plt.savefig(f"./draw_result/{self.week_name}_{exp}_ch8.png")
-                plt.close()
 
 
 
@@ -278,9 +209,16 @@ def get_args():
 
 if __name__ == '__main__':
     args = get_args()
+    # TODO: get plate_experiments from json
     try:
-        Analysis(base_dir=args.images_dir,
-                 feat_type='depth_maximize_pixel_avg',
-                 week_name=args.week_name).plot()
+        Analysis(
+            base_dir=args.images_dir,
+            feat_type='depth_maximize_pixel_avg',
+            week_name=args.week_name, 
+            plate_name=args.plate_name,
+            base_channel=args.base_channel,
+            target_channel=args.target_channel,
+            plate_experiments=args.plate_experiments,
+        ).plot()
     except Exception as e:
         print(e)
