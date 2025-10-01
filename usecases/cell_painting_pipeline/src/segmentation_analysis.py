@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import json
 import os
 import sys
 import pickle
@@ -15,18 +16,8 @@ from PIL import Image
 import matplotlib.patches as mpatches
 from tqdm import tqdm
 
-# Updated suffix constants based on new dataset
-
-
 FEAT_TYPE_VALUES = ['pixel_avg', 'depth_maximize_pixel_avg', 'rpe_images']
 
-# dye labels
-dye_label = {
-    'plate3_exp': None,
-    'plate8_exp_green':'caspase on ch3',
-    'plate8_exp_red':'caspase on ch3 and h2ax on ch8',
-    'plate8_exp_yellow':'h2ax on ch3'
-}
 
 class CellPaintDataset(Dataset):
 
@@ -107,7 +98,7 @@ class CellPaintDataset(Dataset):
         run_name = self._get_run_name(idx)
         record = self.data[run_name]
 
-        feat = self.feat_func(record, feat_type=self.feat_type, ch=3)
+        feat = self.feat_func(record, feat_type=self.feat_type)
         record['feature'] = feat
 
         return record
@@ -135,8 +126,10 @@ class CellPaintDataset(Dataset):
 
         return feature
 
+
 class Analysis:
-    def __init__(self, base_dir, feat_type, week_name, plate_name, base_channel, target_channel, plate_experiments, transform=None):
+    def __init__(self, base_dir, base_channel, target_channel, feat_type,
+                 week_name, plate_name, plate_experiments, transform=None):
         self.dataset = CellPaintDataset(
             base_dir=base_dir,
             base_channel=base_channel,
@@ -149,9 +142,10 @@ class Analysis:
         self.plate_name = plate_name
         self.exp_setting = plate_experiments['exp_setting']
         self.exp_list = plate_experiments['exp_list'][plate_name]
-        self.results_dir = os.path.join(base_dir, "results")
         self.target_channel = target_channel
         self.dye_label = plate_experiments['dye_label']
+
+        self.results_dir = os.path.join(base_dir, 'results')
         os.makedirs(self.results_dir, exist_ok=True)
         
         fp = f'{week_name}_{plate_name}_dataset.pkl'
@@ -200,25 +194,69 @@ class Analysis:
             plt.close()
 
 
-
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i','--images_dir',dest='images_dir',type=str,required=True,help='directory path of input images')
-    parser.add_argument('-w','--week_name',dest='week_name',type=str,required=True,help='week name prefix for data dump')
+    parser.add_argument(
+        '-i', '--images_dir',
+        dest='images_dir',
+        type=str,
+        required=True,
+        help='directory path of input images')
+    parser.add_argument(
+        '-w', '--week_name',
+        dest='week_name',
+        type=str,
+        required=True,
+        help='week name prefix for data dump')
+    parser.add_argument(
+        '--plate_name',
+        type=str,
+        required=True,
+        help='Plate name')
+    parser.add_argument(
+        '--plate_config',
+        dest='plate_config',
+        type=str,
+        required=True,
+        help='Configuration file with plate experiments')
+    parser.add_argument(
+        '--feature_type',
+        dest='feature_type',
+        type=str,
+        required=True,
+        help='Feature type')
+    parser.add_argument(
+        '--base_channel',
+        type=str,
+        required=True,
+        help='Channel used for nucleus segmentation (e.g., "ch2").')
+    parser.add_argument(
+        '--target_channel',
+        type=str,
+        required=True,
+        help='Channel to apply the segmentation mask to (e.g., "ch8").')
     return parser.parse_args(sys.argv[1:])
 
+
 if __name__ == '__main__':
+
     args = get_args()
-    # TODO: get plate_experiments from json
+
+    plate_config = args.plate_config
+    if '/' not in plate_config:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        plate_config = f'{current_dir}/{plate_config}'
+    with open(plate_config, 'r') as file:
+        plate_experiments = json.load(file)
+
     try:
-        Analysis(
-            base_dir=args.images_dir,
-            feat_type='depth_maximize_pixel_avg',
-            week_name=args.week_name, 
-            plate_name=args.plate_name,
-            base_channel=args.base_channel,
-            target_channel=args.target_channel,
-            plate_experiments=args.plate_experiments,
-        ).plot()
+        Analysis(base_dir=args.images_dir,
+                 base_channel=args.base_channel,
+                 target_channel=args.target_channel,
+                 feat_type=args.feature_type,
+                 week_name=args.week_name,
+                 plate_name=args.plate_name,
+                 plate_experiments=plate_experiments).plot()
     except Exception as e:
         print(e)
+

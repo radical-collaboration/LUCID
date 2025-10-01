@@ -186,14 +186,21 @@ class Pipeline:
 
         analysis_scripts = ['segmentation_analysis.py']
 
+        arguments = ['--images_dir', self.output_dir,
+                     '--base_channel', self.cfg.base_channel,
+                     '--target_channel', self.cfg.target_channel,
+                     '--week_name', self.cfg.week_name,
+                     '--plate_name', self.cfg.plate_name,
+                     '--plate_config', self.cfg.plate_config,
+                     '--feature_type', self.cfg.feature_type]
+
         tds = []
         for run_script in analysis_scripts:
             tds.append(rp.TaskDescription({
                 'uid': self.emgr.generate_task_uid(prefix=self.name,
                                                    stage_id=2),
                 'executable': 'python',
-                'arguments': [f'$RP_PILOT_SANDBOX/{run_script}',
-                              '--images_dir', self.output_dir],
+                'arguments': [f'$RP_PILOT_SANDBOX/{run_script}'] + arguments,
                 'pre_exec': self.emgr.cfg.task_pre_exec or [],
                 'named_env': 'rp',
                 'ranks': 1

@@ -14,7 +14,9 @@
         "save_bbox": true,
         "bbox_threshold": 0.35, 
         "week_name": "week1",
-        "plate_name": "plate8"
+        "plate_name": "plate8",
+        "plate_config": "plate_experiments.json",
+        "feature_type": "depth_maximize_pixel_avg"
     },
 
     "exec_cfg": {
