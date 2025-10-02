@@ -176,12 +176,11 @@ class Pipeline:
 
         return submitted_tasks
 
-    def stage_2(self):
-        """Analysis."""
-        return 0
+    # def stage_2(self):
+    #     """Analysis."""
+    #     return 0
 
-    # FIXME: for test purposes keep this stage separately
-    def stage_3(self):
+    def stage_2(self):
         """Analysis."""
 
         analysis_scripts = ['segmentation_analysis.py']

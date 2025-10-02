@@ -34,7 +34,7 @@ class CellPaintDataset(Dataset):
             transform (callable, optional): Transform to be applied on the image
         """
         
-        TGT_SUFFIX = f'-{target_channel}sk1fk1fl1_{target_channel}_nucleus_areas.npy'
+        TGT_SUFFIX = f'-{target_channel}sk1fk1fl1_{target_channel}_masked.npy'
         SEG_SUFFIX = f'-{base_channel}sk1fk1fl1_{base_channel}_nucleu_mask.png'
         CSV_SUFFIX = f'-{base_channel}sk1fk1fl1_cell_count.csv'
         self.base_dir = base_dir
