@@ -80,7 +80,13 @@ class LUCID_SIG(object):
         self._final_tasks    = list()
 
         # silence RP reporter, use own
-        os.environ['RADICAL_REPORT'] = 'false'
+        # os.environ['RADICAL_REPORT'] = 'false'
+
+        # for debug purposes 
+        os.environ['RADICAL_CONFIG_USER_DIR'] = os.getcwd()
+        os.environ['RADICAL_LOG_LVL'] = 'DEBUG'
+        os.environ['RADICAL_REPORT'] = 'TRUE'   
+
         self._rep = ru.Reporter('lucid_sig')  # Name of the reporter)
         self._rep.title('LUCID_SIG')  # Title for the reporter
 
@@ -95,7 +101,8 @@ class LUCID_SIG(object):
             'runtime' : self.args.runtime,  # Runtime for the pilot (e.g., '00:30:00')
             'cores'   : self.args.num_cpus * self.args.num_nodes,
             'gpus'    : self.args.num_gpus * self.args.num_nodes,
-            'project' : self.args.project_id})
+            'project' : self.args.project_id,
+            'sandbox' : self.args.work_dir})
         print(pdesc)
 
         self._pilot = self._pmgr.submit_pilots(pdesc)
@@ -126,10 +133,10 @@ class LUCID_SIG(object):
                         help='number of annotation preparation tasks to run (default: 1)')
         parser.add_argument('--num_genome', type=int, default=1,
                         help='number of genome download tasks to run (default: 1)')
-        parser.add_argument('--num_mut_prep', type=int, default=1,
-                        help='number of mutation preparation tasks to run (default: 1)')
-        parser.add_argument('--num_mut_annot', type=int, default=1,
-                        help='number of mutation annotation tasks to run (default: 1)')
+        parser.add_argument('--num_mut_prep', type=int, default=24,
+                        help='number of mutation preparation tasks to run (default: 24)')
+        parser.add_argument('--num_mut_annot', type=int, default=24,
+                        help='number of mutation annotation tasks to run (default: 24)')
         parser.add_argument('--project_id', default='hep-cce',
                         help='Project ID for the resource allocation (default: hep-cce). This should be set to your actual project ID for resource allocation purposes')
         parser.add_argument('--queue', default='debug',
@@ -138,6 +145,8 @@ class LUCID_SIG(object):
                         help='working directory for the job (default: current working directory). This should be set to the directory where your scripts and input files are located')
         parser.add_argument('--genome_offline_path', type=str, default='{}/reference_genomes'.format(os.getcwd()),
                         help='Path to offline genome file for SigProfilerExtractor (default: empty, not used)')
+        parser.add_argument('--output_folder', type=str, default='./radiation_analysis_results/filtered_vcfs/output/',
+                        help='Output folder for the results (default: ./radiation_analysis_results/filtered_vcfs/output/)')
 
         args = parser.parse_args()
         self.args = args
@@ -527,7 +536,6 @@ class LUCID_SIG(object):
                                              '--output', './radiation_analysis_results/filtered_vcfs/output/',
                                              '--project', 'test',  # Project name for SigProfilerExtractor, can be customized,
                                              '--reference', 'GRCh38'
-                                             '--offline_path', '{}'.format(self.args.genome_offline_path)
                                             ]}))
 
             self._submit_task(tds)
@@ -558,12 +566,12 @@ class LUCID_SIG(object):
                          'cpu_thread_type'  : rp.OpenMP,
                          'gpu_processes'     : 0,
                          'gpu_process_type'  : None,
-                        #  'executable'   : 'python',
-                         'executable'   : 'sleep',
-                         'arguments'    : ['10']}))
-                        #  'arguments'    : ['{}/annotation_preprocessing.py'.format(self.args.work_dir),
-                        #                   '--build', 'hg38',
-                        #                   '--annotation-dir', '{}/annotations'.format(self.args.work_dir)]}))
+                         'executable'   : 'python',
+                        #  'executable'   : 'sleep',
+                        #  'arguments'    : ['10']}))
+                         'arguments'    : ['{}/annotation_preprocessing.py'.format(self.args.work_dir),
+                                          '--build', 'hg38',
+                                          '--annotation-dir', '{}/annotations'.format(self.args.work_dir)]}))
 
             self._submit_task(tds)
 
