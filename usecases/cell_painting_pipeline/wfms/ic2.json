@@ -7,7 +7,7 @@
     },
 
     "pipeline_cfg": {
-        "input_dir": "/hpcgpfs01/scratch/mtitov/cell_painting_images/Images",
+        "input_dir": "/hpcgpfs01/scratch/mtitov/cell_painting_images/input",
         "output_dir": "/hpcgpfs01/scratch/mtitov/cell_painting_images/output",
         "base_channel": "ch2",
         "target_channel": "ch3",
@@ -16,10 +16,14 @@
         "week_name": "week1",
         "plate_name": "plate8",
         "plate_config": "plate_experiments.json",
-        "feature_type": "depth_maximize_pixel_avg"
+        "feature_type": "depth_maximize_pixel_avg",
+        "model_path": ""
     },
 
     "exec_cfg": {
+        "task_environment": {
+            "DEEPCELL_ACCESS_TOKEN": ""
+        },
         "task_pre_exec": [
             "conda deactivate || true",
             "module purge",

@@ -143,14 +143,12 @@ class Pipeline:
     def stage_1(self):
         """Segmentation."""
 
-        # segmentation_scripts = ['cell_nucleus_segmentation.py',
-        #                         'cell_segmentation.py']
-        segmentation_scripts = ['cell_segmentation_complete.py']
-
+        run_script = 'cell_segmentation_complete.py'
         arguments = ['--base_channel', self.cfg.base_channel,
                      '--target_channel', self.cfg.target_channel,
                      '--bbox_threshold', self.cfg.bbox_threshold,
-                     '--output_dir', self.output_dir]
+                     '--output_dir', self.output_dir,
+                     '--model_path', self.cfg.model_path]
         if self.cfg.save_bbox:
             arguments += ['--save_bbox']
 
@@ -158,33 +156,28 @@ class Pipeline:
         tds = []
         idx_final = len(self.images) - 1
         for idx, image_path in enumerate(self.images):
-            for run_script in segmentation_scripts:
-                tds.append(rp.TaskDescription({
-                    'uid': self.emgr.generate_task_uid(prefix=self.name,
-                                                       stage_id=1),
-                    'executable': 'python',
-                    'arguments': [f'$RP_PILOT_SANDBOX/{run_script}',
-                                  '--image_path', image_path] + arguments,
-                    'pre_exec': self.emgr.cfg.task_pre_exec or [],
-                    'named_env': 'rp',
-                    'ranks': 1,
-                    'gpus_per_rank': 1
-                }))
+            tds.append(rp.TaskDescription({
+                'uid': self.emgr.generate_task_uid(prefix=self.name,
+                                                   stage_id=1),
+                'executable': 'python',
+                'arguments': [f'$RP_PILOT_SANDBOX/{run_script}',
+                              '--image_path', image_path] + arguments,
+                'pre_exec': self.emgr.cfg.task_pre_exec or [],
+                'environment': self.emgr.cfg.task_environment or {},
+                'named_env': 'rp',
+                'ranks': 1,
+                'gpus_per_rank': 1
+            }))
             if len(tds) >= TASKS_SUBMISSION_BATCH or idx == idx_final:
                 submitted_tasks += len(self.emgr.submit_tasks(tds))
                 del tds[:]
 
         return submitted_tasks
 
-    # def stage_2(self):
-    #     """Analysis."""
-    #     return 0
-
     def stage_2(self):
         """Analysis."""
 
-        analysis_scripts = ['segmentation_analysis.py']
-
+        run_script = 'segmentation_analysis.py'
         arguments = ['--images_dir', self.output_dir,
                      '--base_channel', self.cfg.base_channel,
                      '--target_channel', self.cfg.target_channel,
@@ -193,18 +186,16 @@ class Pipeline:
                      '--plate_config', self.cfg.plate_config,
                      '--feature_type', self.cfg.feature_type]
 
-        tds = []
-        for run_script in analysis_scripts:
-            tds.append(rp.TaskDescription({
-                'uid': self.emgr.generate_task_uid(prefix=self.name,
-                                                   stage_id=2),
-                'executable': 'python',
-                'arguments': [f'$RP_PILOT_SANDBOX/{run_script}'] + arguments,
-                'pre_exec': self.emgr.cfg.task_pre_exec or [],
-                'named_env': 'rp',
-                'ranks': 1
-            }))
-        return len(self.emgr.submit_tasks(tds))
+        analysis_td = rp.TaskDescription({
+            'uid': self.emgr.generate_task_uid(prefix=self.name,
+                                               stage_id=2),
+            'executable': 'python',
+            'arguments': [f'$RP_PILOT_SANDBOX/{run_script}'] + arguments,
+            'pre_exec': self.emgr.cfg.task_pre_exec or [],
+            'named_env': 'rp',
+            'ranks': 1
+        })
+        return len(self.emgr.submit_tasks(analysis_td))
 
 
 # ------------------------------------------------------------------------------
