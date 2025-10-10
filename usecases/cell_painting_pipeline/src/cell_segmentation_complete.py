@@ -19,7 +19,7 @@ from scipy.ndimage import binary_dilation, label
 import torch
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-from cellSAM import segment_cellular_image, get_model
+from cellSAM import segment_cellular_image, get_model, get_local_model
 
 SUPPORTED_IMAGE_EXT = ('.png', '.tif', '.tiff')
 
@@ -31,6 +31,7 @@ class Segmentation:
 
     def __init__(self, base_channel: str, target_channel: str,
                  image_path: str, output_dir: Optional[str] = None,
+                 model_path: Optional[str] = None,
                  save_bbox: bool = False, bbox_threshold: float = 0.35):
 
         self.elapsed_time = 0.
@@ -61,6 +62,10 @@ class Segmentation:
         # load images
         self.ch_base['img'] = np.array(Image.open(self.ch_base['path']))
         self.ch_tgt['img'] = np.array(Image.open(self.ch_tgt['path']))
+
+        # get model
+        self.model = get_local_model(model_path) if model_path else get_model()
+        self.model.to(str(device))
 
     def save_cell_count(self, cell_count):
         output_file = self.ch_base['file_stub'] + CELL_COUNT_SUFFIX
@@ -124,9 +129,10 @@ class Segmentation:
         # Start timing
         start_time = time.time()
 
-        # Segment the ch2 image
+        # Segment the base-channel image
         mask, embedding, bounding_boxes = segment_cellular_image(
-            self.ch_base['img'],
+            img=self.ch_base['img'],
+            model=self.model,
             bbox_threshold=self.bbox_threshold,
             normalize=True,
             device=str(device))
@@ -136,7 +142,8 @@ class Segmentation:
                             f'skipping.')
 
         if self.save_bbox:
-            bounding_boxes = bounding_boxes.cpu().numpy()
+            if hasattr(bounding_boxes, 'cpu'):
+                bounding_boxes = bounding_boxes.cpu().numpy()
             # get the number of cells detected (bounding_boxes.shape[0])
             cell_count = bounding_boxes.shape[0]
             print(f'Number of cells in {self.ch_base["file"]}: {cell_count}')
@@ -190,6 +197,11 @@ def get_args():
         type=float,
         default=0.35,
         help='Threshold for selecting bounding boxes in segmentation.')
+    parser.add_argument(
+        '--model_path',
+        type=str,
+        required=False,
+        help='Path to the local cellSAM model.')
     return parser.parse_args(sys.argv[1:])
 
 
@@ -212,6 +224,7 @@ if __name__ == '__main__':
                          target_channel=args.target_channel,
                          image_path=image_path,
                          output_dir=args.output_dir,
+                         model_path=args.model_path,
                          save_bbox=args.save_bbox,
                          bbox_threshold=args.bbox_threshold).run()
         except Exception as e:
