@@ -27,6 +27,27 @@ SCALED_SIZE = 1024
 CELL_COUNT_SUFFIX = '_cell_count.csv'
 
 
+def separate_instances_by_bbox(mask, bounding_boxes, scale_factor):
+    """
+    Create instance mask where each bbox gets its own instance ID,
+    even if masks are connected.
+    """
+    instance_mask = np.zeros_like(mask, dtype=np.int32)
+    
+    for idx, bbox in enumerate(bounding_boxes, start=1):
+        xmin, ymin, xmax, ymax = bbox
+        xmin_new = xmin * scale_factor
+        ymin_new = ymin * scale_factor
+        xmax_new = xmax * scale_factor
+        ymax_new = ymax * scale_factor
+        # Extract the region for this bbox
+        roi = mask[int(ymin_new):int(ymax_new), int(xmin_new):int(xmax_new)]
+        # Assign this instance ID only where mask is True in this bbox
+        instance_mask[int(ymin_new):int(ymax_new), int(xmin_new):int(xmax_new)][roi > 0] = idx
+    
+    return instance_mask, len(bounding_boxes)
+
+
 class Segmentation:
 
     def __init__(self, base_channel: str, target_channel: str,
@@ -78,21 +99,32 @@ class Segmentation:
         fig, ax = plt.subplots()
         ax.imshow(self.ch_base['img'])
         scale_factor = self.ch_base['img'].shape[0] / SCALED_SIZE
+        scaled_bboxes = []
         for bbox in bounding_boxes:
             xmin, ymin, xmax, ymax = bbox
             xmin_new, ymin_new = xmin * scale_factor, ymin * scale_factor
+            xmax_new, ymax_new = xmax * scale_factor, ymax * scale_factor
+            # Store the scaled bbox
+            scaled_bboxes.append([xmin_new, ymin_new, xmax_new, ymax_new])
+            
             width = (xmax - xmin) * scale_factor
             height = (ymax - ymin) * scale_factor
             ax.add_patch(patches.Rectangle((xmin_new, ymin_new), width, height,
                                            linewidth=1, edgecolor='r',
                                            facecolor='none'))
+        
+        # Convert to numpy array and save
+        scaled_bboxes = np.array(scaled_bboxes)
+        file_name = '%(file_stub)s_%(name)s_nucleu_bbx.npy' % self.ch_base
+        np.save(os.path.join(self.output_dir, file_name), scaled_bboxes)
+        
         ax.axis('off')
         file_name = '%(file_stub)s_%(name)s_nucleu_bbx.png' % self.ch_base
         fig.savefig(os.path.join(self.output_dir, file_name),
                     dpi=300, bbox_inches='tight')
         plt.close()
 
-    def plot(self, mask):
+    def plot(self, mask, bounding_boxes):
 
         # plot and save original base-/target-channel image
         for ch in [self.ch_base, self.ch_tgt]:
@@ -104,7 +136,11 @@ class Segmentation:
         plt.imsave(os.path.join(self.output_dir, file_name),
                    mask, cmap='viridis')
 
-        instance_mask, num_instances = label(mask)
+        # Use separate_instances_by_bbox instead of label
+        scale_factor = self.ch_base['img'].shape[0] / SCALED_SIZE
+        instance_mask, num_instances = separate_instances_by_bbox(
+            mask, bounding_boxes, scale_factor)
+        
         print(f'Identified {num_instances} instances in the mask.')
         file_name = '%(file_stub)s_%(name)s_instance_mask.npy' % self.ch_base
         np.save(os.path.join(self.output_dir, file_name), instance_mask)
@@ -141,9 +177,10 @@ class Segmentation:
             raise Exception(f'Invalid mask for {self.ch_base["file"]}, '
                             f'skipping.')
 
+        if hasattr(bounding_boxes, 'cpu'):
+            bounding_boxes = bounding_boxes.cpu().numpy()
+        
         if self.save_bbox:
-            if hasattr(bounding_boxes, 'cpu'):
-                bounding_boxes = bounding_boxes.cpu().numpy()
             # get the number of cells detected (bounding_boxes.shape[0])
             cell_count = bounding_boxes.shape[0]
             print(f'Number of cells in {self.ch_base["file"]}: {cell_count}')
@@ -151,7 +188,7 @@ class Segmentation:
             self.save_cell_count(cell_count)
             self.plot_bbox(bounding_boxes)
 
-        self.plot(mask)
+        self.plot(mask, bounding_boxes)
 
         end_time = time.time()
         self.elapsed_time = end_time - start_time
@@ -229,4 +266,3 @@ if __name__ == '__main__':
                          bbox_threshold=args.bbox_threshold).run()
         except Exception as e:
             print(e)
-
